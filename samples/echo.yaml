@@ -2,18 +2,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: echo-deployment
+  name: echo-deployment-a
   labels:
     kcp.dev/cluster: kcp-cluster-a
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: echo-server
+      app: echo-server-a
   template:
     metadata:
       labels:
-        app: echo-server
+        app: echo-server-a
     spec:
       containers:
         - name: echo-server
@@ -26,7 +26,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: httpecho
+  name: httpecho-a
   labels:
     kcp.dev/cluster: kcp-cluster-a
 spec:
@@ -36,4 +36,43 @@ spec:
       targetPort: http-port
       protocol: TCP
   selector:
-    app: echo-server
+    app: echo-server-a
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-deployment-b
+  labels:
+    kcp.dev/cluster: kcp-cluster-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echo-server-b
+  template:
+    metadata:
+      labels:
+        app: echo-server-b
+    spec:
+      containers:
+        - name: echo-server
+          image: jmalloc/echo-server
+          ports:
+            - name: http-port
+              containerPort: 8080
+              protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpecho-b
+  labels:
+    kcp.dev/cluster: kcp-cluster-b
+spec:
+  ports:
+    - name: http-port
+      port: 80
+      targetPort: http-port
+      protocol: TCP
+  selector:
+    app: echo-server-b

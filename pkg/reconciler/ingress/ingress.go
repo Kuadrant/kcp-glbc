@@ -122,6 +122,7 @@ func (c *Controller) reconcileRoot(ctx context.Context, ingress *networkingv1.In
 }
 
 func (c *Controller) reconcileLeaf(ctx context.Context, rootName string, ingress *networkingv1.Ingress) error {
+	klog.Infof("reconciling leaf ingress '%v'", ingress.Name)
 	// The leaf Ingress was updated, get others and aggregate status.
 	sel, err := labels.Parse(fmt.Sprintf("%s=%s", ownedByLabel, rootName))
 	if err != nil {
@@ -148,7 +149,22 @@ func (c *Controller) reconcileLeaf(ctx context.Context, rootName string, ingress
 
 	if !exists {
 		klog.Infof("deleting orphaned leaf ingress '%v' of nonexistant root ingress '%v'", ingress.Name, rootName)
-		return c.client.NetworkingV1().Ingresses(ingress.Namespace).Delete(ctx, ingress.Name, metav1.DeleteOptions{})
+		err = c.client.NetworkingV1().Ingresses(ingress.Namespace).Delete(ctx, ingress.Name, metav1.DeleteOptions{})
+		if err != nil {
+			return err
+		}
+	}
+
+	if ingress.DeletionTimestamp != nil && !ingress.DeletionTimestamp.IsZero() {
+		klog.Infof("deleting DNS Records for leaf ingress '%v'", ingress.Name)
+		// The Ingress is being deleted. KCP doesn't currently cascade deletion to owned resources,
+		// so let's delete the DNSRecord manually.
+		err := c.dnsRecordClient.DNSRecords(ingress.Namespace).Delete(ctx, ingress.Name, metav1.DeleteOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+		removeFinalizer(ingress, cascadeCleanupFinalizer)
+		return nil
 	}
 
 	rootIngress = rootIf.(*networkingv1.Ingress).DeepCopy()
@@ -157,18 +173,12 @@ func (c *Controller) reconcileLeaf(ctx context.Context, rootName string, ingress
 		rootHostname = rootIngress.Annotations[hostGeneratedAnnotation]
 	}
 
+	klog.Infof("reconciling DNS Records for leaf ingress '%v', with root hostname '%v'", ingress.Name, rootHostname)
 	// Reconcile the DNSRecord for the Ingress
-	if ingress.DeletionTimestamp != nil && !ingress.DeletionTimestamp.IsZero() {
-		// The Ingress is being deleted. KCP doesn't currently cascade deletion to owned resources,
-		// so let's delete the DNSRecord manually.
-		err := c.dnsRecordClient.DNSRecords(ingress.Namespace).Delete(ctx, ingress.Name, metav1.DeleteOptions{})
-		if err != nil && !errors.IsNotFound(err) {
-			return err
-		}
-		removeFinalizer(ingress, cascadeCleanupFinalizer)
-	} else if rootHostname != "" && len(ingress.Status.LoadBalancer.Ingress) > 0 {
+	if rootHostname != "" && len(rootIngress.Status.LoadBalancer.Ingress) > 0 {
+		klog.Infof("reconciling DNS record for '%v'", ingress.Name)
 		// The ingress has been admitted, let's expose the local load-balancing point to the global LB.
-		record, err := getDNSRecord(rootHostname, ingress)
+		record, err := getDNSRecord(rootHostname, ingress, rootIngress)
 		if err != nil {
 			return err
 		}
@@ -187,12 +197,14 @@ func (c *Controller) reconcileLeaf(ctx context.Context, rootName string, ingress
 			}
 		}
 	} else {
+		klog.Infof("in-else deleting DNS Records for leaf ingress '%v'", ingress.Name)
 		err := c.dnsRecordClient.DNSRecords(ingress.Namespace).Delete(ctx, ingress.Name, metav1.DeleteOptions{})
 		if err != nil && !errors.IsNotFound(err) {
 			return err
 		}
 	}
 
+	klog.Infof("setting status for root ingress '%v'", rootIngress.Name)
 	// Clean the current status, and then recreate if from the other leafs.
 	rootIngress.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{}
 	for _, o := range others {
@@ -232,9 +244,9 @@ func (c *Controller) reconcileLeaf(ctx context.Context, rootName string, ingress
 }
 
 //TODO may want to move this to its own package in the future
-func getDNSRecord(hostname string, ingress *networkingv1.Ingress) (*v1.DNSRecord, error) {
+func getDNSRecord(hostname string, ingress, rootIngress *networkingv1.Ingress) (*v1.DNSRecord, error) {
 	var targets []string
-	for _, lbs := range ingress.Status.LoadBalancer.Ingress {
+	for _, lbs := range rootIngress.Status.LoadBalancer.Ingress {
 		if lbs.Hostname != "" {
 			//TODO once we are adding tests abstract to interface
 			ips, err := net.LookupIP(lbs.Hostname)
