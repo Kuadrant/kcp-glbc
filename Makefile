@@ -2,7 +2,8 @@ all: vendor build
 .PHONY: all
 
 SHELL := /bin/bash
-NUM_CLUSTERS:= 2
+NUM_CLUSTERS := 2
+KCP_BRANCH := release-prototype-2
 # go-get-tool will 'go get' any package $2 and install it to $1.
 # backing up and recovering the go.mod/go.sum as go install doesnt work
 # with project that use replacement directives, no time for a nicer solution.
@@ -35,7 +36,7 @@ kind:
 KCP = $(shell pwd)/bin/kcp
 kcp:
 	rm -rf ./tmp/kcp
-	git clone --depth=1 https://github.com/kcp-dev/kcp ./tmp/kcp
+	git clone --depth=1 --branch ${KCP_BRANCH} https://github.com/kcp-dev/kcp ./tmp/kcp
 	cd ./tmp/kcp && make
 	cp ./tmp/kcp/bin/cluster-controller $(shell pwd)/bin
 	cp ./tmp/kcp/bin/compat $(shell pwd)/bin
