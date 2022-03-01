@@ -34,6 +34,8 @@ kind:
 
 # Not ideal, fix when possible.
 KCP = $(shell pwd)/bin/kcp
+INGRESS_CONTROLLER = $(shell pwd)/bin/ingress-controller
+
 kcp:
 	rm -rf ./tmp/kcp
 	git clone --depth=1 --branch ${KCP_BRANCH} https://github.com/kcp-dev/kcp ./tmp/kcp
@@ -47,6 +49,7 @@ kcp:
 	cp ./tmp/kcp/bin/shard-proxy $(shell pwd)/bin
 	cp ./tmp/kcp/bin/syncer $(shell pwd)/bin
 	cp ./tmp/kcp/bin/virtual-workspaces $(shell pwd)/bin
+	cp ./tmp/kcp/bin/ingress-controller $(shell pwd)/bin
 	rm -rf ./tmp/kcp
 
 .PHONY: local-setup
