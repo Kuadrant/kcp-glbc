@@ -191,10 +191,8 @@ func (c *Controller) process(key string) error {
 
 	ctx := context.TODO()
 
-	rootName, isLeaf := getRootName(current)
-	if isLeaf {
-		err = c.reconcileLeaf(ctx, rootName, current)
-	} else {
+	_, isLeaf := getRootName(current)
+	if !isLeaf {
 		err = c.reconcileRoot(ctx, current)
 	}
 	if err != nil {

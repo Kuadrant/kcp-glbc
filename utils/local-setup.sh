@@ -46,7 +46,7 @@ GOROOT=$(go env GOROOT)
 export GOROOT
 export KIND_BIN="./bin/kind"
 export KCP_BIN="./bin/kcp"
-export INGRESS_CONTROLLER_BIN="./bin/ingress-controller"
+export INGRESS_CONTROLLER_BIN="./bin/kcp-ingress-controller"
 TEMP_DIR="./tmp"
 KCP_LOG_FILE="${TEMP_DIR}"/kcp.log
 INGRESS_CONTROLLER_LOG_FILE="${TEMP_DIR}"/ingress-controller.log
@@ -134,7 +134,7 @@ export KUBECONFIG=.kcp/admin.kubeconfig
 
 echo ""
 echo "Starting Ingress Controller"
-"${INGRESS_CONTROLLER_BIN}" --kubeconfig="${KUBECONFIG}" --envoy-listener-port=8181 --envoy-xds-port=18000 &> ${INGRESS_CONTROLLER_LOG_FILE} &
+"${INGRESS_CONTROLLER_BIN}" --kubeconfig="${KUBECONFIG}" --envoy-listener-port=0 --envoy-xds-port=0 &> ${INGRESS_CONTROLLER_LOG_FILE} &
 INGRESS_CONTROLLER_PID=$!
 
 echo "Waiting 15 seconds..."

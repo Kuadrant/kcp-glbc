@@ -34,7 +34,7 @@ kind:
 
 # Not ideal, fix when possible.
 KCP = $(shell pwd)/bin/kcp
-INGRESS_CONTROLLER = $(shell pwd)/bin/ingress-controller
+INGRESS_CONTROLLER = $(shell pwd)/bin/kcp-ingress-controller
 
 kcp:
 	rm -rf ./tmp/kcp
@@ -49,7 +49,7 @@ kcp:
 	cp ./tmp/kcp/bin/shard-proxy $(shell pwd)/bin
 	cp ./tmp/kcp/bin/syncer $(shell pwd)/bin
 	cp ./tmp/kcp/bin/virtual-workspaces $(shell pwd)/bin
-	cp ./tmp/kcp/bin/ingress-controller $(shell pwd)/bin
+	cp ./tmp/kcp/bin/ingress-controller $(INGRESS_CONTROLLER)
 	rm -rf ./tmp/kcp
 
 .PHONY: local-setup
