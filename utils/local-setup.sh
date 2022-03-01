@@ -39,14 +39,17 @@ cleanup() {
   echo "Killing KCP"
   kill "$CONTROLLER_2"
   kill "$KCP_PID"
+  kill "$INGRESS_CONTROLLER_PID"
 }
 
 GOROOT=$(go env GOROOT)
 export GOROOT
 export KIND_BIN="./bin/kind"
 export KCP_BIN="./bin/kcp"
+export INGRESS_CONTROLLER_BIN="./bin/ingress-controller"
 TEMP_DIR="./tmp"
 KCP_LOG_FILE="${TEMP_DIR}"/kcp.log
+INGRESS_CONTROLLER_LOG_FILE="${TEMP_DIR}"/ingress-controller.log
 
 KIND_CLUSTER_PREFIX="kcp-cluster-"
 for ((i=1;i<=$NUM_CLUSTERS;i++))
@@ -129,6 +132,20 @@ fi
 echo "Exporting KUBECONFIG=.kcp/admin.kubeconfig"
 export KUBECONFIG=.kcp/admin.kubeconfig
 
+echo ""
+echo "Starting Ingress Controller"
+"${INGRESS_CONTROLLER_BIN}" --kubeconfig="${KUBECONFIG}" --envoy-listener-port=8181 --envoy-xds-port=18000 &> ${INGRESS_CONTROLLER_LOG_FILE} &
+INGRESS_CONTROLLER_PID=$!
+
+echo "Waiting 15 seconds..."
+sleep 15
+
+if ! ps -p ${INGRESS_CONTROLLER_PID}; then
+  echo "####"
+  echo "---> Ingress-controller failed to start, see ${INGRESS_CONTROLLER_LOG_FILE} for info."
+  echo "####"
+  exit 1 #this will trigger cleanup function
+fi
 echo "Registering kind k8s clusters into KCP"
 kubectl apply -f ./tmp/
 
