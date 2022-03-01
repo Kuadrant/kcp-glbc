@@ -36,7 +36,7 @@ kind:
 KCP = $(shell pwd)/bin/kcp
 kcp:
 	rm -rf ./tmp/kcp
-	git clone --depth=1 --branch ${KCP_BRANCH} https://github.com/kcp-dev/kcp ./tmp/kcp
+	git clone --depth=1 --branch ${KCP_BRANCH} https://github.com/kuadrant/kcp ./tmp/kcp
 	cd ./tmp/kcp && make
 	cp ./tmp/kcp/bin/cluster-controller $(shell pwd)/bin
 	cp ./tmp/kcp/bin/compat $(shell pwd)/bin
