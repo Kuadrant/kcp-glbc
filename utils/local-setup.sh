@@ -49,12 +49,25 @@ TEMP_DIR="./tmp"
 KCP_LOG_FILE="${TEMP_DIR}"/kcp.log
 
 KIND_CLUSTER_PREFIX="kcp-cluster-"
+KCP_GLBC_CLUSTER_NAME="${KIND_CLUSTER_PREFIX}glbc-control"
+KCP_GLBC_KUBECONFIG="${KCP_GLBC_CLUSTER_NAME}.kubeconfig"
+
 for ((i=1;i<=$NUM_CLUSTERS;i++))
 do
 	CLUSTERS="${CLUSTERS}${KIND_CLUSTER_PREFIX}${i} "
 done
 
 mkdir -p ${TEMP_DIR}
+
+createGLBCCluster() {
+  ${KIND_BIN} create cluster --name ${KCP_GLBC_CLUSTER_NAME}
+  ${KIND_BIN} get kubeconfig --name=${KCP_GLBC_CLUSTER_NAME} > ${TEMP_DIR}/${KCP_GLBC_KUBECONFIG}
+
+  echo "Deploying cert manager to kind glbc cluster"
+  kubectl --context kind-${KCP_GLBC_CLUSTER_NAME} apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.7.1/cert-manager.yaml
+
+  kubectl --context kind-${KCP_GLBC_CLUSTER_NAME} -n cert-manager wait --timeout=300s --for=condition=Available deployments --all
+}
 
 createCluster() {
   cluster=$1;
@@ -100,6 +113,10 @@ if ! [[ $clusterCount =~ "0" ]] ; then
   ${KIND_BIN} get clusters | grep ${KIND_CLUSTER_PREFIX} | xargs ${KIND_BIN} delete clusters
 fi
 
+echo "Deploying 1 kind k8s glbc cluster locally."
+
+createGLBCCluster
+
 echo "Deploying $NUM_CLUSTERS kind k8s clusters locally."
 
 port80=8080
@@ -142,7 +159,7 @@ echo ""
 echo "The kind k8s clusters have been registered, and KCP is running, now you should run the kcp-ingress"
 echo "example: "
 echo ""
-echo "       ./bin/ingress-controller -kubeconfig .kcp/admin.kubeconfig"
+echo "       ./bin/ingress-controller -kubeconfig .kcp/admin.kubeconfig -glbc-kubeconfig ${TEMP_DIR}/${KCP_GLBC_KUBECONFIG}"
 echo ""
 echo "Dont forget to export the proper KUBECONFIG to create objects against KCP:"
 echo "export KUBECONFIG=${PWD}/.kcp/admin.kubeconfig"

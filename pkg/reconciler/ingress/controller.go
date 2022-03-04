@@ -8,8 +8,12 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	networkingv1lister "k8s.io/client-go/listers/networking/v1"
@@ -31,6 +35,7 @@ const resyncPeriod = 10 * time.Hour
 // the Ingress is created.
 func NewController(config *ControllerConfig) *Controller {
 	client := kubernetes.NewForConfigOrDie(config.Cfg)
+	glbcClient := dynamic.NewForConfigOrDie(config.GLBCCfg)
 	dnsRecordClient := kuadrantv1.NewForConfigOrDie(config.Cfg)
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	stopCh := make(chan struct{}) // TODO: hook this up to SIGTERM/SIGINT
@@ -38,6 +43,7 @@ func NewController(config *ControllerConfig) *Controller {
 	c := &Controller{
 		queue:           queue,
 		client:          client,
+		glbcClient:      glbcClient,
 		dnsRecordClient: dnsRecordClient,
 		stopCh:          stopCh,
 		domain:          config.Domain,
@@ -55,6 +61,23 @@ func NewController(config *ControllerConfig) *Controller {
 			}
 		}()
 	}
+
+	certResource := schema.GroupVersionResource{Group: "cert-manager.io", Version: "v1", Resource: "certificates"}
+	glbcsif := dynamicinformer.NewFilteredDynamicSharedInformerFactory(c.glbcClient, time.Minute, corev1.NamespaceAll, nil)
+	glbcsif.ForResource(certResource).Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			u := obj.(*unstructured.Unstructured)
+			klog.Infof("certificates add %v", u.GetName())
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			u := newObj.(*unstructured.Unstructured)
+			klog.Infof("certificates update %v", u.GetName())
+		},
+		DeleteFunc: func(obj interface{}) {
+			u := obj.(*unstructured.Unstructured)
+			klog.Infof("certificates delete %v", u.GetName())
+		},
+	})
 
 	sif := informers.NewSharedInformerFactoryWithOptions(c.client, resyncPeriod)
 
@@ -78,6 +101,13 @@ func NewController(config *ControllerConfig) *Controller {
 		}
 	}
 
+	glbcsif.Start(stopCh)
+	for inf, sync := range glbcsif.WaitForCacheSync(stopCh) {
+		if !sync {
+			klog.Fatalf("Failed to sync %s", inf)
+		}
+	}
+
 	c.indexer = sif.Networking().V1().Ingresses().Informer().GetIndexer()
 	c.lister = sif.Networking().V1().Ingresses().Lister()
 
@@ -86,6 +116,7 @@ func NewController(config *ControllerConfig) *Controller {
 
 type ControllerConfig struct {
 	Cfg             *rest.Config
+	GLBCCfg         *rest.Config
 	EnvoyXDS        *envoyserver.XdsServer
 	Domain          *string
 	EnvoyListenPort *uint
@@ -94,6 +125,7 @@ type ControllerConfig struct {
 type Controller struct {
 	queue           workqueue.RateLimitingInterface
 	client          kubernetes.Interface
+	glbcClient      dynamic.Interface
 	dnsRecordClient kuadrantv1.KuadrantV1Interface
 	stopCh          chan struct{}
 	indexer         cache.Indexer
