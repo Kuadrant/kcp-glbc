@@ -15,6 +15,7 @@ import (
 const numThreads = 2
 
 var kubeconfig = flag.String("kubeconfig", "", "Path to kubeconfig")
+var glbcKubeconfig = flag.String("glbc-kubeconfig", "", "Path to GLBC kubeconfig")
 var kubecontext = flag.String("context", "", "Context to use in the Kubeconfig file, instead of the current context")
 
 var domain = flag.String("domain", "hcpapps.net", "The domain to use to expose ingresses")
@@ -39,9 +40,17 @@ func main() {
 		klog.Fatal(err)
 	}
 
+	gr, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: *glbcKubeconfig},
+		&clientcmd.ConfigOverrides{}).ClientConfig()
+	if err != nil {
+		klog.Fatal(err)
+	}
+
 	controllerConfig := &ingress.ControllerConfig{
-		Cfg:    r,
-		Domain: domain,
+		Cfg:     r,
+		GLBCCfg: gr,
+		Domain:  domain,
 	}
 
 	if *envoyEnableXDS {
