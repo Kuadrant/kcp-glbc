@@ -8,8 +8,12 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	networkingv1lister "k8s.io/client-go/listers/networking/v1"
@@ -32,12 +36,14 @@ func NewController(config *ControllerConfig) *Controller {
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
 	c := &Controller{
-		queue:                 queue,
-		kubeClient:            config.KubeClient,
-		sharedInformerFactory: config.SharedInformerFactory,
-		dnsRecordClient:       config.DnsRecordClient,
-		domain:                config.Domain,
-		tracker:               newTracker(),
+		queue:                     queue,
+		kubeClient:                config.KubeClient,
+		glbcKubeClient:            config.GLBCKubeClient,
+		sharedInformerFactory:     config.SharedInformerFactory,
+		glbcSharedInformerFactory: config.GLBCSharedInformerFactory,
+		dnsRecordClient:           config.DnsRecordClient,
+		domain:                    config.Domain,
+		tracker:                   newTracker(),
 	}
 
 	if config.EnvoyXDS != nil {
@@ -51,6 +57,22 @@ func NewController(config *ControllerConfig) *Controller {
 			}
 		}()
 	}
+
+	certResource := schema.GroupVersionResource{Group: "cert-manager.io", Version: "v1", Resource: "certificates"}
+	c.glbcSharedInformerFactory.ForResource(certResource).Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			u := obj.(*unstructured.Unstructured)
+			klog.Infof("certificates add %v", u.GetName())
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			u := newObj.(*unstructured.Unstructured)
+			klog.Infof("certificates update %v", u.GetName())
+		},
+		DeleteFunc: func(obj interface{}) {
+			u := obj.(*unstructured.Unstructured)
+			klog.Infof("certificates delete %v", u.GetName())
+		},
+	})
 
 	// Watch for events related to Ingresses
 	c.sharedInformerFactory.Networking().V1().Ingresses().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -72,26 +94,30 @@ func NewController(config *ControllerConfig) *Controller {
 }
 
 type ControllerConfig struct {
-	KubeClient            kubernetes.ClusterInterface
-	DnsRecordClient       kuadrantv1.ClusterInterface
-	SharedInformerFactory informers.SharedInformerFactory
-	EnvoyXDS              *envoyserver.XdsServer
-	Domain                *string
-	EnvoyListenPort       *uint
+	KubeClient                kubernetes.ClusterInterface
+	GLBCKubeClient            dynamic.Interface
+	DnsRecordClient           kuadrantv1.ClusterInterface
+	SharedInformerFactory     informers.SharedInformerFactory
+	GLBCSharedInformerFactory dynamicinformer.DynamicSharedInformerFactory
+	EnvoyXDS                  *envoyserver.XdsServer
+	Domain                    *string
+	EnvoyListenPort           *uint
 }
 
 type Controller struct {
-	queue                 workqueue.RateLimitingInterface
-	kubeClient            kubernetes.ClusterInterface
-	sharedInformerFactory informers.SharedInformerFactory
-	dnsRecordClient       kuadrantv1.ClusterInterface
-	indexer               cache.Indexer
-	lister                networkingv1lister.IngressLister
-	envoyXDS              *envoyserver.XdsServer
-	envoyListenPort       *uint
-	cache                 *envoy.Cache
-	domain                *string
-	tracker               tracker
+	queue                     workqueue.RateLimitingInterface
+	kubeClient                kubernetes.ClusterInterface
+	glbcKubeClient            dynamic.Interface
+	sharedInformerFactory     informers.SharedInformerFactory
+	glbcSharedInformerFactory dynamicinformer.DynamicSharedInformerFactory
+	dnsRecordClient           kuadrantv1.ClusterInterface
+	indexer                   cache.Indexer
+	lister                    networkingv1lister.IngressLister
+	envoyXDS                  *envoyserver.XdsServer
+	envoyListenPort           *uint
+	cache                     *envoy.Cache
+	domain                    *string
+	tracker                   tracker
 }
 
 func (c *Controller) enqueue(obj interface{}) {

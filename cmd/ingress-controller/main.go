@@ -4,7 +4,10 @@ import (
 	"flag"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	genericapiserver "k8s.io/apiserver/pkg/server"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -24,6 +27,7 @@ const (
 )
 
 var kubeconfig = flag.String("kubeconfig", "", "Path to kubeconfig")
+var glbcKubeconfig = flag.String("glbc-kubeconfig", "", "Path to GLBC kubeconfig")
 var kubecontext = flag.String("context", "", "Context to use in the Kubeconfig file, instead of the current context")
 
 var domain = flag.String("domain", "hcpapps.net", "The domain to use to expose ingresses")
@@ -48,6 +52,13 @@ func main() {
 		klog.Fatal(err)
 	}
 
+	gr, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: *glbcKubeconfig},
+		&clientcmd.ConfigOverrides{}).ClientConfig()
+	if err != nil {
+		klog.Fatal(err)
+	}
+
 	ctx := genericapiserver.SetupSignalContext()
 
 	kubeClient, err := kubernetes.NewClusterForConfig(r)
@@ -62,11 +73,19 @@ func main() {
 	}
 	kuadrantInformerFactory := externalversions.NewSharedInformerFactory(dnsRecordClient.Cluster("*"), resyncPeriod)
 
+	glbcKubeClient, err := dynamic.NewForConfig(gr)
+	if err != nil {
+		klog.Fatal(err)
+	}
+	glbcKuadrantInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(glbcKubeClient, time.Minute, corev1.NamespaceAll, nil)
+
 	controllerConfig := &ingress.ControllerConfig{
-		KubeClient:            kubeClient,
-		DnsRecordClient:       dnsRecordClient,
-		SharedInformerFactory: kubeInformerFactory,
-		Domain:                domain,
+		KubeClient:                kubeClient,
+		GLBCKubeClient:            glbcKubeClient,
+		DnsRecordClient:           dnsRecordClient,
+		SharedInformerFactory:     kubeInformerFactory,
+		GLBCSharedInformerFactory: glbcKuadrantInformerFactory,
+		Domain:                    domain,
 	}
 	if *envoyEnableXDS {
 		controllerConfig.EnvoyXDS = envoyserver.NewXdsServer(*envoyXDSPort, nil)
@@ -88,6 +107,9 @@ func main() {
 
 	kuadrantInformerFactory.Start(ctx.Done())
 	kuadrantInformerFactory.WaitForCacheSync(ctx.Done())
+
+	glbcKuadrantInformerFactory.Start(ctx.Done())
+	glbcKuadrantInformerFactory.WaitForCacheSync(ctx.Done())
 
 	go func() {
 		ingressController.Start(ctx, numThreads)
