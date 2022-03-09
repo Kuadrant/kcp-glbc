@@ -32,5 +32,5 @@ go run k8s.io/code-generator/cmd/informer-gen \
 	--output-base=. \
 	--output-package=github.com/kuadrant/kcp-glbc/pkg/client/kuadrant/informers
 
-cp -R ./github.com/kuadrant/kcp-glbc/pkg/client/kuadrant/ pkg/client/kuadrant
+cp -R ./github.com/kuadrant/kcp-glbc/pkg/client/kuadrant pkg/client
 rm -rf ./github.com

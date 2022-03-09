@@ -7,11 +7,13 @@ require (
 	github.com/google/go-cmp v0.5.6
 	github.com/imdario/mergo v0.3.9 // indirect
 	github.com/rs/xid v1.3.0
+	golang.org/x/tools v0.1.6-0.20210820212750-d4cc65f0b2ff // indirect
 	google.golang.org/grpc v1.42.0 // indirect
 	k8s.io/api v0.22.2
 	k8s.io/apimachinery v0.22.2
 	k8s.io/apiserver v0.0.0
 	k8s.io/client-go v0.21.4
+	k8s.io/code-generator v0.21.4 // indirect
 	k8s.io/klog/v2 v2.30.0
 	k8s.io/utils v0.0.0-20211116205334-6203023598ed
 )
