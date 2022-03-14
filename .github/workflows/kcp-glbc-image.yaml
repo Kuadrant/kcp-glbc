@@ -1,0 +1,50 @@
+name: Build and Publish KCP GLBC Image
+
+on:
+  push:
+    branches: [ '*' ]
+    tags: [ '*' ]
+
+env:
+  IMG_TAGS: ${{ github.ref_name }}
+  MAIN_BRANCH_NAME: main
+
+jobs:
+  build:
+    name: Build and Publish KCP GLBC Image
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Add short sha tag
+        id: add-sha-tag
+        run: |
+          echo "IMG_TAGS=$(echo ${{ github.sha }} | cut -b -7) ${{ env.IMG_TAGS }}" >> $GITHUB_ENV
+
+      - name: Add latest tag
+        if: ${{ github.ref_name == env.MAIN_BRANCH_NAME }}
+        id: add-latest-tag
+        run: |
+          echo "IMG_TAGS=latest ${{ env.IMG_TAGS }}" >> $GITHUB_ENV
+
+      - name: Build KCP GLBC Image
+        id: build-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: kcp-glbc
+          tags: ${{ env.IMG_TAGS }}
+          containerfiles: |
+            ./Dockerfile
+
+      - name: Push to quay.io
+        id: push-to-quay
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: quay.io/${{ github.repository_owner }}
+          username: ${{ secrets.IMG_REGISTRY_USERNAME }}
+          password: ${{ secrets.IMG_REGISTRY_TOKEN }}
+      - name: Print Image URL
+        run: echo "Image pushed to ${{ steps.push-to-quay.outputs.registry-paths }}"

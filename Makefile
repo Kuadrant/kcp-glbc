@@ -4,6 +4,10 @@ SHELL := /usr/bin/env bash
 NUM_CLUSTERS := 2
 KCP_BRANCH := release-prototype-2
 
+IMAGE_TAG_BASE ?= quay.io/kuadrant/kcp-glbc
+IMAGE_TAG ?= latest
+IMG ?= $(IMAGE_TAG_BASE):$(IMAGE_TAG)
+
 .PHONY: all
 all: build
 
@@ -69,7 +73,7 @@ build: ## Build the project.
 
 .PHONY: docker-build
 docker-build: ## Build docker image.
-	#ToDo Implement `docker-build` target
+	docker build -t ${IMG} .
 
 ##@ Deployment
 
