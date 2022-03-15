@@ -82,7 +82,7 @@ jobs:
           echo "Building KCP"
           make kcp
           
-          TEMP_DIR="./tmp"
+          TEMP_DIR="$(pwd)/tmp"
           
           CLUSTERS_KUBECONFIG_DIR="${TEMP_DIR}"/clusters
           mkdir -p "${CLUSTERS_KUBECONFIG_DIR}"
@@ -111,8 +111,9 @@ jobs:
             exit 1
           fi
           
-          echo "Exporting KUBECONFIG=.kcp/admin.kubeconfig"
-          export KUBECONFIG=.kcp/admin.kubeconfig
+          export KUBECONFIG="$(pwd)"/.kcp/admin.kubeconfig
+          echo "Exporting KUBECONFIG=${KUBECONFIG}"
+          echo "KUBECONFIG=${KUBECONFIG}" >> $GITHUB_ENV
           
           echo "Creating workspace shard"
           kubectl create namespace default
@@ -138,6 +139,7 @@ jobs:
 
       - name: Run IT
         run: |
+          export KUBECONFIG=${{ env.KUBECONFIG }}
           export CLUSTERS_KUBECONFIG_DIR=${{ env.CLUSTERS_KUBECONFIG_DIR }}
           
           # Then run e2e tests
