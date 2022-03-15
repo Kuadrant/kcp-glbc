@@ -53,6 +53,9 @@ lint: ## Run golangci-lint against code.
 test: generate ## Run tests.
 	#ToDo Implement `test` target
 
+e2e: build
+	go test -timeout 60m -v ./e2e -tags=e2e
+
 ##@ CI
 
 #Note, these targets are expected to run in a clean CI enviornment.
