@@ -5,8 +5,11 @@ go 1.16
 require (
 	github.com/aws/aws-sdk-go v1.40.21
 	github.com/google/go-cmp v0.5.6
+	github.com/google/uuid v1.3.0
 	github.com/jetstack/cert-manager v1.7.1
+	github.com/kcp-dev/kcp v0.0.0-20220225144447-778c142ff8a9
 	github.com/miekg/dns v1.1.34
+	github.com/onsi/gomega v1.17.0
 	github.com/rs/xid v1.3.0
 	k8s.io/api v0.23.1
 	k8s.io/apimachinery v0.23.1
@@ -14,7 +17,7 @@ require (
 	k8s.io/client-go v0.23.1
 	k8s.io/code-generator v0.23.1
 	k8s.io/klog/v2 v2.30.0
-	k8s.io/utils v0.0.0-20211116205334-6203023598ed
+	k8s.io/utils v0.0.0-20211208161948-7d6a63dca704
 )
 
 replace (
