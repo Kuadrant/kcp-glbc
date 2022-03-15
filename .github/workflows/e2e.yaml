@@ -84,8 +84,11 @@ jobs:
           
           TEMP_DIR="./tmp"
           
-          echo "Creating Cluster manifests"
-          kind get kubeconfig --name=cluster1 | sed -e 's/^/    /' | cat utils/kcp-contrib/cluster.yaml - | sed -e "s/name: local/name: kind/" > "${TEMP_DIR}"/cluster1.yaml
+          CLUSTERS_KUBECONFIG_DIR="${TEMP_DIR}"/clusters
+          mkdir -p "${CLUSTERS_KUBECONFIG_DIR}"
+          echo "CLUSTERS_KUBECONFIG_DIR=${CLUSTERS_KUBECONFIG_DIR}" >> $GITHUB_ENV
+          echo "Creating Cluster manifests in directory ${CLUSTERS_KUBECONFIG_DIR}"
+          kind get kubeconfig --name=cluster1 "${CLUSTERS_KUBECONFIG_DIR}"/cluster1.yaml
           
           echo "Deploying Ingress controller to KinD clusters"
           kubectl config use-context kind-cluster1
@@ -135,6 +138,8 @@ jobs:
 
       - name: Run IT
         run: |
+          export CLUSTERS_KUBECONFIG_DIR=${{ env.CLUSTERS_KUBECONFIG_DIR }}
+          
           # Then run e2e tests
           # make test-e2e
       - name: Logs

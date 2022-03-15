@@ -2,6 +2,10 @@ package e2e
 
 import (
 	"context"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +32,8 @@ const (
 	TestTimeoutLong   = 10 * time.Minute
 
 	AdminWorkspace = "admin"
+
+	workloadClusterKubeConfigDir = "CLUSTERS_KUBECONFIG_DIR"
 )
 
 func init() {
@@ -197,6 +203,23 @@ func invokeWorkspaceTestCode(t Test, workspace *tenancyv1alpha1.Workspace, doRun
 	}()
 
 	doRun(workspace)
+}
+
+func NewWorkloadClusterWithKubeConfig(name string) (*clusterv1alpha1.Cluster, error) {
+	dir := os.Getenv(workloadClusterKubeConfigDir)
+	if dir == "" {
+		return nil, fmt.Errorf("%s environment variable is not set", workloadClusterKubeConfigDir)
+	}
+
+	data, err := ioutil.ReadFile(path.Join(dir, name+".yaml"))
+	if err != nil {
+		return nil, fmt.Errorf("error reading cluster %q Kubeconfig: %v", name, err)
+	}
+
+	workloadCluster := NewWorkloadCluster(name)
+	workloadCluster.Spec.KubeConfig = string(data)
+
+	return workloadCluster, nil
 }
 
 func NewWorkloadCluster(name string) *clusterv1alpha1.Cluster {
