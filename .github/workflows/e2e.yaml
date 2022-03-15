@@ -111,6 +111,11 @@ jobs:
           echo "Exporting KUBECONFIG=.kcp/admin.kubeconfig"
           export KUBECONFIG=.kcp/admin.kubeconfig
           
+          echo "Creating workspace shard"
+          kubectl create namespace default
+          kubectl create secret generic kubeconfig --from-file=kubeconfig="${KUBECONFIG}"
+          kubectl apply -f e2e/workspace-shard.yaml
+          
           echo "Registering GLBC APIs"
           kubectl apply -f ./config/crd
           
