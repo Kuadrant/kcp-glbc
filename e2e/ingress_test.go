@@ -40,6 +40,12 @@ func TestIngress(t *testing.T) {
 				Equal(corev1.ConditionTrue),
 			))
 
+			// Wait until the APIs are installed
+			workspaceDiscovery := test.Client().Core().Cluster(cluster.ClusterName).Discovery()
+			test.Eventually(IsAPIInstalled(workspaceDiscovery, corev1.SchemeGroupVersion.String(), "Service")).Should(BeTrue())
+			test.Eventually(IsAPIInstalled(workspaceDiscovery, appsv1.SchemeGroupVersion.String(), "Deployment")).Should(BeTrue())
+			test.Eventually(IsAPIInstalled(workspaceDiscovery, networkingv1.SchemeGroupVersion.String(), "Ingress")).Should(BeTrue())
+
 			test.WithNewTestNamespace(InWorkspace(workspace), WithLabel("experimental.scheduling.kcp.dev/disabled", "")).
 				Do(func(namespace *corev1.Namespace) {
 					name := "echo"
