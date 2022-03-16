@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/onsi/gomega"
-	"github.com/onsi/gomega/types"
 )
 
 type Test interface {
@@ -17,9 +16,7 @@ type Test interface {
 	Ctx() context.Context
 	Client() Client
 
-	Expect(actual interface{}, extra ...interface{}) types.Assertion
-	Eventually(actual interface{}, intervals ...interface{}) types.AsyncAssertion
-	Consistently(actual interface{}, intervals ...interface{}) types.AsyncAssertion
+	gomega.Gomega
 
 	WithNewTestWorkspace() *WithWorkspace
 	WithNewTestNamespace(...NamespaceOption) *WithNamespace
@@ -65,18 +62,6 @@ func (t *T) Client() Client {
 		t.client = c
 	})
 	return t.client
-}
-
-func (t *T) Expect(actual interface{}, extra ...interface{}) types.Assertion {
-	return t.WithT.Expect(actual, extra...)
-}
-
-func (t *T) Eventually(actual interface{}, intervals ...interface{}) types.AsyncAssertion {
-	return t.WithT.Eventually(actual, intervals...)
-}
-
-func (t *T) Consistently(actual interface{}, intervals ...interface{}) types.AsyncAssertion {
-	return t.WithT.Consistently(actual, intervals...)
 }
 
 func (t *T) WithNewTestWorkspace() *WithWorkspace {
