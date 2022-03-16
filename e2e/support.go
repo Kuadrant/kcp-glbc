@@ -22,6 +22,7 @@ import (
 	"github.com/kcp-dev/kcp/pkg/apis/cluster"
 	clusterv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/cluster/v1alpha1"
 	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
+	tenancyhelper "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1/helper"
 	conditionsapi "github.com/kcp-dev/kcp/third_party/conditions/apis/conditions/v1alpha1"
 	conditionsutil "github.com/kcp-dev/kcp/third_party/conditions/util/conditions"
 )
@@ -31,7 +32,7 @@ const (
 	TestTimeoutMedium = 5 * time.Minute
 	TestTimeoutLong   = 10 * time.Minute
 
-	AdminWorkspace = "admin"
+	AdminWorkspace = tenancyhelper.OrganizationCluster
 
 	workloadClusterKubeConfigDir = "CLUSTERS_KUBECONFIG_DIR"
 )
@@ -47,9 +48,103 @@ type Test interface {
 	T() *testing.T
 	Ctx() context.Context
 	Client() Client
+
 	Expect(actual interface{}, extra ...interface{}) types.Assertion
 	Eventually(actual interface{}, intervals ...interface{}) types.AsyncAssertion
 	Consistently(actual interface{}, intervals ...interface{}) types.AsyncAssertion
+
+	WithNewTestWorkspace() *WithWorkspace
+	WithNewTestNamespace(...NamespaceOption) *WithNamespace
+}
+
+func With(t *testing.T) Test {
+	ctx := context.Background()
+	if deadline, ok := t.Deadline(); ok {
+		withDeadline, cancel := context.WithDeadline(ctx, deadline)
+		t.Cleanup(cancel)
+		ctx = withDeadline
+	}
+
+	return &T{
+		WithT: gomega.NewWithT(t),
+		t:     t,
+		ctx:   ctx,
+	}
+}
+
+type WithWorkspace struct {
+	Test
+}
+
+func (w *WithWorkspace) Do(f func(workspace *tenancyv1alpha1.Workspace)) {
+	workspace := createTestWorkspace(w)
+	defer deleteTestWorkspace(w, workspace)
+
+	w.Eventually(Workspace(w, workspace.Name)).Should(
+		gomega.WithTransform(
+			ConditionStatus(tenancyv1alpha1.WorkspaceScheduled),
+			gomega.Equal(corev1.ConditionTrue),
+		))
+
+	invokeWorkspaceTestCode(w, workspace, f)
+}
+
+type WithNamespace struct {
+	Test
+	options []NamespaceOption
+}
+
+func (n *WithNamespace) Do(f func(namespace *corev1.Namespace)) {
+	namespace := createTestNamespace(n, n.options...)
+	defer deleteTestNamespace(n, namespace)
+
+	invokeNamespaceTestCode(n, namespace, f)
+}
+
+type NamespaceOption interface {
+	ApplyTo(namespace *corev1.Namespace) error
+}
+
+type inWorkspace struct {
+	workspace *tenancyv1alpha1.Workspace
+}
+
+func (o *inWorkspace) ApplyTo(namespace *corev1.Namespace) (err error) {
+	namespace.ClusterName, err = tenancyhelper.EncodeLogicalClusterName(o.workspace)
+	return
+}
+
+func InWorkspace(workspace *tenancyv1alpha1.Workspace) NamespaceOption {
+	return &inWorkspace{workspace}
+}
+
+type withLabel struct {
+	key, value string
+}
+
+func (o *withLabel) ApplyTo(namespace *corev1.Namespace) error {
+	if namespace.Labels == nil {
+		namespace.Labels = map[string]string{}
+	}
+	namespace.Labels[o.key] = o.value
+	return nil
+}
+
+func WithLabel(key, value string) NamespaceOption {
+	return &withLabel{key, value}
+}
+
+type withLabels struct {
+	labels map[string]string
+}
+
+func (o *withLabels) ApplyTo(namespace *corev1.Namespace) error {
+	namespace.Labels = o.labels
+	return nil
+}
+
+func WithLabels(labels map[string]string) NamespaceOption {
+	return &withLabels{labels}
 }
 
 type T struct {
@@ -91,35 +186,15 @@ func (t *T) Consistently(actual interface{}, intervals ...interface{}) types.Asy
 	return t.WithT.Consistently(actual, intervals...)
 }
 
-func WithT(t *testing.T) Test {
-	ctx := context.Background()
-	if deadline, ok := t.Deadline(); ok {
-		withDeadline, cancel := context.WithDeadline(ctx, deadline)
-		t.Cleanup(cancel)
-		ctx = withDeadline
-	}
-
-	return &T{
-		WithT: gomega.NewWithT(t),
-		t:     t,
-		ctx:   ctx,
-	}
+func (t *T) WithNewTestWorkspace() *WithWorkspace {
+	return &WithWorkspace{t}
 }
 
-func WithNewTestWorkspace(t Test, doRun func(workspace *tenancyv1alpha1.Workspace)) {
-	workspace := CreateTestWorkspace(t)
-	defer DeleteTestWorkspace(t, workspace)
-
-	t.Eventually(Workspace(t, workspace.Name)).Should(
-		gomega.WithTransform(
-			ConditionStatus(tenancyv1alpha1.WorkspaceScheduled),
-			gomega.Equal(corev1.ConditionTrue),
-		))
-
-	invokeWorkspaceTestCode(t, workspace, doRun)
+func (t *T) WithNewTestNamespace(options ...NamespaceOption) *WithNamespace {
+	return &WithNamespace{t, options}
 }
 
-func CreateTestWorkspace(t Test) *tenancyv1alpha1.Workspace {
+func createTestWorkspace(t Test) *tenancyv1alpha1.Workspace {
 	name := "test-" + uuid.New().String()
 
 	workspace := &tenancyv1alpha1.Workspace{
@@ -143,7 +218,7 @@ func CreateTestWorkspace(t Test) *tenancyv1alpha1.Workspace {
 	return workspace
 }
 
-func DeleteTestWorkspace(t Test, workspace *tenancyv1alpha1.Workspace) {
+func deleteTestWorkspace(t Test, workspace *tenancyv1alpha1.Workspace) {
 	propagationPolicy := metav1.DeletePropagationBackground
 	err := t.Client().Kcp().Cluster(workspace.ClusterName).TenancyV1alpha1().Workspaces().Delete(t.Ctx(), workspace.Name, metav1.DeleteOptions{
 		PropagationPolicy: &propagationPolicy,
@@ -151,14 +226,7 @@ func DeleteTestWorkspace(t Test, workspace *tenancyv1alpha1.Workspace) {
 	t.Expect(err).NotTo(gomega.HaveOccurred())
 }
 
-// func WithNewTestNamespace(t Test, doRun func(string)) {
-// 	namespace := CreateTestNamespace(t)
-// 	defer DeleteTestNamespace(t, namespace)
-//
-// 	invokeNamespaceTestCode(t, namespace.GetName(), doRun)
-// }
-
-func CreateTestNamespace(t Test, workspace string) *corev1.Namespace {
+func createTestNamespace(t Test, options ...NamespaceOption) *corev1.Namespace {
 	name := "test-" + uuid.New().String()
 
 	namespace := &corev1.Namespace{
@@ -171,13 +239,17 @@ func CreateTestNamespace(t Test, workspace string) *corev1.Namespace {
 		},
 	}
 
-	namespace, err := t.Client().Core().Cluster(workspace).CoreV1().Namespaces().Create(t.Ctx(), namespace, metav1.CreateOptions{})
+	for _, option := range options {
+		t.Expect(option.ApplyTo(namespace)).To(gomega.Succeed())
+	}
+
+	namespace, err := t.Client().Core().Cluster(namespace.ClusterName).CoreV1().Namespaces().Create(t.Ctx(), namespace, metav1.CreateOptions{})
 	t.Expect(err).NotTo(gomega.HaveOccurred())
 
 	return namespace
 }
 
-func DeleteTestNamespace(t Test, namespace *corev1.Namespace) {
+func deleteTestNamespace(t Test, namespace *corev1.Namespace) {
 	propagationPolicy := metav1.DeletePropagationBackground
 	err := t.Client().Core().Cluster(namespace.ClusterName).CoreV1().Namespaces().Delete(t.Ctx(), namespace.Name, metav1.DeleteOptions{
 		PropagationPolicy: &propagationPolicy,
@@ -185,24 +257,24 @@ func DeleteTestNamespace(t Test, namespace *corev1.Namespace) {
 	t.Expect(err).NotTo(gomega.HaveOccurred())
 }
 
-func invokeNamespaceTestCode(t Test, namespace string, doRun func(string)) {
+func invokeNamespaceTestCode(t Test, namespace *corev1.Namespace, do func(namespace *corev1.Namespace)) {
 	defer func() {
 		if t.T().Failed() {
 			// TODO
 		}
 	}()
 
-	doRun(namespace)
+	do(namespace)
 }
 
-func invokeWorkspaceTestCode(t Test, workspace *tenancyv1alpha1.Workspace, doRun func(*tenancyv1alpha1.Workspace)) {
+func invokeWorkspaceTestCode(t Test, workspace *tenancyv1alpha1.Workspace, do func(*tenancyv1alpha1.Workspace)) {
 	defer func() {
 		if t.T().Failed() {
 			// TODO
 		}
 	}()
 
-	doRun(workspace)
+	do(workspace)
 }
 
 func NewWorkloadClusterWithKubeConfig(name string) (*clusterv1alpha1.Cluster, error) {
