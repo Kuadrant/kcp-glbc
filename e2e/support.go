@@ -303,7 +303,9 @@ func NewWorkloadCluster(name string) *clusterv1alpha1.Cluster {
 			Kind:       "Cluster",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			// FIXME: workaround for https://github.com/kcp-dev/kcp/issues/730
+			// Name: name,
+			GenerateName: name + "-",
 		},
 	}
 }
