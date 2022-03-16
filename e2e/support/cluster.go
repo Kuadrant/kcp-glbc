@@ -17,6 +17,8 @@ import (
 	clusterv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/cluster/v1alpha1"
 )
 
+const ClusterLabel = "kcp.dev/cluster"
+
 func NewWorkloadClusterWithKubeConfig(name string) (*clusterv1alpha1.Cluster, error) {
 	dir := os.Getenv(workloadClusterKubeConfigDir)
 	if dir == "" {
@@ -48,10 +50,10 @@ func NewWorkloadCluster(name string) *clusterv1alpha1.Cluster {
 	}
 }
 
-func WorkloadCluster(t Test, workspace, name string) func() *clusterv1alpha1.Cluster {
-	return func() *clusterv1alpha1.Cluster {
+func WorkloadCluster(t Test, workspace, name string) func(g gomega.Gomega) *clusterv1alpha1.Cluster {
+	return func(g gomega.Gomega) *clusterv1alpha1.Cluster {
 		c, err := t.Client().Kcp().Cluster(workspace).ClusterV1alpha1().Clusters().Get(t.Ctx(), name, metav1.GetOptions{})
-		t.Expect(err).NotTo(gomega.HaveOccurred())
+		g.Expect(err).NotTo(gomega.HaveOccurred())
 		return c
 	}
 }
