@@ -102,6 +102,7 @@ jobs:
           echo "Starting KCP, sending logs to ${KCP_LOG_FILE}"
           ./bin/kcp start --push-mode --discovery-poll-interval 3s --run-controllers --resources-to-sync=secrets,deployments,services,ingresses.networking.k8s.io --auto-publish-apis > ${KCP_LOG_FILE} 2>&1 &
           KCP_PID=$!
+          echo "KCP_PID=${KCP_PID}" >> $GITHUB_ENV
           
           echo "Waiting 15 seconds..."
           sleep 15
@@ -128,6 +129,7 @@ jobs:
           echo "Starting GLBC, sending logs to ${GLBC_LOG_FILE}"
           ./bin/ingress-controller -kubeconfig .kcp/admin.kubeconfig -glbc-kubeconfig "${HOME}"/.kube/config -dns-provider fake > ${GLBC_LOG_FILE} 2>&1 &
           GLBC_PID=$!
+          echo "GLBC_PID=${GLBC_PID}" >> $GITHUB_ENV
           
           echo "Waiting 15 seconds..."
           sleep 15
@@ -136,19 +138,26 @@ jobs:
             echo "GLBC failed to start, see ${GLBC_LOG_FILE} for info."
             exit 1
           fi
-
-      - name: Run IT
+      - name: Run e2e tests
         run: |
           export KUBECONFIG=${{ env.KUBECONFIG }}
           export CLUSTERS_KUBECONFIG_DIR=${{ env.CLUSTERS_KUBECONFIG_DIR }}
           
           # Then run e2e tests
           make e2e
-      - name: Logs
+      - name: Shutdown GLBC
         if: ${{ always() }}
         run: |
-          echo "Printing KCP logs"
-          cat ${{ env.KCP_LOG_FILE }}
-
+          echo "Kill GLBC process"
+          kill ${{ env.GLBC_PID }}
+          
           echo "Printing GLBC logs"
           cat ${{ env.GLBC_LOG_FILE }}
+      - name: Shutdown KCP
+        if: ${{ always() }}
+        run: |
+          echo "Kill KCP process"
+          kill ${{ env.KCP_PID }}
+          
+          echo "Printing KCP logs"
+          cat ${{ env.KCP_LOG_FILE }}
