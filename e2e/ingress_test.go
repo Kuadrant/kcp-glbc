@@ -14,6 +14,8 @@ import (
 	clusterv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/cluster/v1alpha1"
 	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
 	tenancyhelper "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1/helper"
+
+	. "github.com/kuadrant/kcp-glbc/e2e/support"
 )
 
 func TestIngress(t *testing.T) {
