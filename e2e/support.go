@@ -259,6 +259,7 @@ func deleteTestNamespace(t Test, namespace *corev1.Namespace) {
 
 func invokeNamespaceTestCode(t Test, namespace *corev1.Namespace, do func(namespace *corev1.Namespace)) {
 	defer func() {
+		// nolint: staticcheck
 		if t.T().Failed() {
 			// TODO
 		}
@@ -269,6 +270,7 @@ func invokeNamespaceTestCode(t Test, namespace *corev1.Namespace, do func(namesp
 
 func invokeWorkspaceTestCode(t Test, workspace *tenancyv1alpha1.Workspace, do func(*tenancyv1alpha1.Workspace)) {
 	defer func() {
+		// nolint: staticcheck
 		if t.T().Failed() {
 			// TODO
 		}
