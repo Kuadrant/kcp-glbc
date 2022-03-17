@@ -14,6 +14,9 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	appsv1apply "k8s.io/client-go/applyconfigurations/apps/v1"
+	corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
+	v1apply "k8s.io/client-go/applyconfigurations/meta/v1"
 	networkingv1apply "k8s.io/client-go/applyconfigurations/networking/v1"
 
 	clusterv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/cluster/v1alpha1"
@@ -63,15 +66,18 @@ func TestIngress(t *testing.T) {
 	// Create the Deployment and Service for cluster 1
 	syncToCluster1 := map[string]string{ClusterLabel: cluster1.Name}
 
-	_, err = test.Client().Core().Cluster(namespace.ClusterName).AppsV1().Deployments(namespace.Name).Create(test.Ctx(), newDeployment(name+"1", syncToCluster1), metav1.CreateOptions{})
-	test.Expect(err).NotTo(HaveOccurred())
+	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).AppsV1().Deployments(namespace.Name).
+		Apply(test.Ctx(), deploymentConfiguration(namespace.Name, name+"1", syncToCluster1), applyOptions)).
+		Error().NotTo(HaveOccurred())
 
-	_, err = test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).Create(test.Ctx(), newService(name+"1", syncToCluster1), metav1.CreateOptions{})
-	test.Expect(err).NotTo(HaveOccurred())
+	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).
+		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name+"1", syncToCluster1), applyOptions)).
+		Error().NotTo(HaveOccurred())
 
 	// Create the root Ingress
-	_, err = test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).Apply(test.Ctx(), ingressConfiguration(namespace.Name, name, name+"1"), applyOptions)
-	test.Expect(err).NotTo(HaveOccurred())
+	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).
+		Apply(test.Ctx(), ingressConfiguration(namespace.Name, name, name+"1"), applyOptions)).
+		Error().NotTo(HaveOccurred())
 
 	// Wait until the root Ingress is reconciled with the load balancer Ingresses
 	test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(And(
@@ -109,15 +115,18 @@ func TestIngress(t *testing.T) {
 	// Create the Deployment and Service for cluster 2
 	syncToCluster2 := map[string]string{ClusterLabel: cluster2.Name}
 
-	_, err = test.Client().Core().Cluster(namespace.ClusterName).AppsV1().Deployments(namespace.Name).Create(test.Ctx(), newDeployment(name+"2", syncToCluster2), metav1.CreateOptions{})
-	test.Expect(err).NotTo(HaveOccurred())
+	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).AppsV1().Deployments(namespace.Name).
+		Apply(test.Ctx(), deploymentConfiguration(namespace.Name, name+"2", syncToCluster2), applyOptions)).
+		Error().NotTo(HaveOccurred())
 
-	_, err = test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).Create(test.Ctx(), newService(name+"2", syncToCluster2), metav1.CreateOptions{})
-	test.Expect(err).NotTo(HaveOccurred())
+	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).
+		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name+"2", syncToCluster2), applyOptions)).
+		Error().NotTo(HaveOccurred())
 
 	// Update the root Ingress
-	_, err = test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).Apply(test.Ctx(), ingressConfiguration(namespace.Name, name, name+"1", name+"2"), applyOptions)
-	test.Expect(err).NotTo(HaveOccurred())
+	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).
+		Apply(test.Ctx(), ingressConfiguration(namespace.Name, name, name+"1", name+"2"), applyOptions)).
+		Error().NotTo(HaveOccurred())
 
 	// Wait until the root Ingress is reconciled with the load balancer Ingresses
 	test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(And(
@@ -146,19 +155,16 @@ func TestIngress(t *testing.T) {
 func ingressConfiguration(namespace, name string, services ...string) *networkingv1apply.IngressApplyConfiguration {
 	var rules []*networkingv1apply.IngressRuleApplyConfiguration
 	for _, service := range services {
-		rule := networkingv1apply.IngressRule().WithHTTP(
-			networkingv1apply.HTTPIngressRuleValue().WithPaths(
-				networkingv1apply.HTTPIngressPath().
+		rule := networkingv1apply.IngressRule().
+			WithHTTP(networkingv1apply.HTTPIngressRuleValue().
+				WithPaths(networkingv1apply.HTTPIngressPath().
 					WithPath("/").
 					WithPathType(networkingv1.PathTypePrefix).
 					WithBackend(networkingv1apply.IngressBackend().
 						WithService(networkingv1apply.IngressServiceBackend().
 							WithName(service).
-							WithPort(networkingv1apply.ServiceBackendPort().WithName("http")),
-						),
-					),
-			),
-		)
+							WithPort(networkingv1apply.ServiceBackendPort().WithName("http"))))))
+
 		rules = append(rules, rule)
 	}
 
@@ -167,70 +173,28 @@ func ingressConfiguration(namespace, name string, services ...string) *networkin
 	)
 }
 
-func newDeployment(name string, labels map[string]string) *appsv1.Deployment {
-	return &appsv1.Deployment{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: appsv1.SchemeGroupVersion.String(),
-			Kind:       "Deployment",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   name,
-			Labels: labels,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": name,
-				},
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app": name,
-					},
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "echo-server",
-							Image: "jmalloc/echo-server",
-							Ports: []corev1.ContainerPort{
-								{
-									Name:          "http",
-									ContainerPort: 8080,
-									Protocol:      corev1.ProtocolTCP,
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+func deploymentConfiguration(namespace, name string, labels map[string]string) *appsv1apply.DeploymentApplyConfiguration {
+	return appsv1apply.Deployment(name, namespace).
+		WithLabels(labels).
+		WithSpec(appsv1apply.DeploymentSpec().
+			WithSelector(v1apply.LabelSelector().WithMatchLabels(map[string]string{"app": name})).
+			WithTemplate(corev1apply.PodTemplateSpec().
+				WithLabels(map[string]string{"app": name}).
+				WithSpec(corev1apply.PodSpec().
+					WithContainers(corev1apply.Container().
+						WithName("echo-server").
+						WithImage("jmalloc/echo-server").
+						WithPorts(corev1apply.ContainerPort().WithName("http").WithContainerPort(8080).WithProtocol(corev1.ProtocolTCP))))))
 }
 
-func newService(name string, labels map[string]string) *corev1.Service {
-	return &corev1.Service{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: corev1.SchemeGroupVersion.String(),
-			Kind:       "Service",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   name,
-			Labels: labels,
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: map[string]string{
-				"app": name,
-			},
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "http",
-					Port:       80,
-					TargetPort: intstr.FromString("http"),
-					Protocol:   corev1.ProtocolTCP,
-				},
-			},
-		},
-	}
+func serviceConfiguration(namespace, name string, labels map[string]string) *corev1apply.ServiceApplyConfiguration {
+	return corev1apply.Service(name, namespace).
+		WithLabels(labels).
+		WithSpec(corev1apply.ServiceSpec().
+			WithSelector(map[string]string{"app": name}).
+			WithPorts(corev1apply.ServicePort().
+				WithName("http").
+				WithPort(80).
+				WithTargetPort(intstr.FromString("http")).
+				WithProtocol(corev1.ProtocolTCP)))
 }

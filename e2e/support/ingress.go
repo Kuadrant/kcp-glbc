@@ -26,7 +26,3 @@ func Ingress(t Test, namespace *corev1.Namespace, name string) func(g gomega.Gom
 func LoadBalancerIngresses(ingress *networkingv1.Ingress) []corev1.LoadBalancerIngress {
 	return ingress.Status.LoadBalancer.Ingress
 }
-
-func PathTypeP(pathType networkingv1.PathType) *networkingv1.PathType {
-	return &pathType
-}
