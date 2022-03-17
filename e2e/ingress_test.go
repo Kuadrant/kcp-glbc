@@ -15,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	clusterv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/cluster/v1alpha1"
-	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
 	tenancyhelper "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1/helper"
 
 	. "github.com/kuadrant/kcp-glbc/e2e/support"
@@ -24,48 +23,47 @@ import (
 func TestIngress(t *testing.T) {
 	test := With(t)
 
-	test.WithNewTestWorkspace().
-		Do(func(workspace *tenancyv1alpha1.Workspace) {
-			cluster, err := NewWorkloadClusterWithKubeConfig("cluster1")
-			test.Expect(err).NotTo(HaveOccurred())
+	workspace := test.NewTestWorkspace()
 
-			logicalCluster, err := tenancyhelper.EncodeLogicalClusterName(workspace)
-			test.Expect(err).NotTo(HaveOccurred())
+	cluster, err := NewWorkloadClusterWithKubeConfig("cluster1")
+	test.Expect(err).NotTo(HaveOccurred())
 
-			cluster, err = test.Client().Kcp().Cluster(logicalCluster).ClusterV1alpha1().Clusters().Create(test.Ctx(), cluster, metav1.CreateOptions{})
-			test.Expect(err).NotTo(HaveOccurred())
+	logicalCluster, err := tenancyhelper.EncodeLogicalClusterName(workspace)
+	test.Expect(err).NotTo(HaveOccurred())
 
-			test.Eventually(WorkloadCluster(test, cluster.ClusterName, cluster.Name)).Should(WithTransform(
-				ConditionStatus(clusterv1alpha1.ClusterReadyCondition),
-				Equal(corev1.ConditionTrue),
-			))
+	cluster, err = test.Client().Kcp().Cluster(logicalCluster).ClusterV1alpha1().Clusters().Create(test.Ctx(), cluster, metav1.CreateOptions{})
+	test.Expect(err).NotTo(HaveOccurred())
 
-			// Wait until the APIs are installed
-			workspaceDiscovery := test.Client().Core().Cluster(cluster.ClusterName).Discovery()
-			test.Eventually(IsAPIInstalled(workspaceDiscovery, corev1.SchemeGroupVersion.String(), "Service")).Should(BeTrue())
-			test.Eventually(IsAPIInstalled(workspaceDiscovery, appsv1.SchemeGroupVersion.String(), "Deployment")).Should(BeTrue())
-			test.Eventually(IsAPIInstalled(workspaceDiscovery, networkingv1.SchemeGroupVersion.String(), "Ingress")).Should(BeTrue())
+	test.Eventually(WorkloadCluster(test, cluster.ClusterName, cluster.Name)).Should(WithTransform(
+		ConditionStatus(clusterv1alpha1.ClusterReadyCondition),
+		Equal(corev1.ConditionTrue),
+	))
 
-			test.WithNewTestNamespace(InWorkspace(workspace), WithLabel("experimental.scheduling.kcp.dev/disabled", "")).
-				Do(func(namespace *corev1.Namespace) {
-					name := "echo"
-					labels := map[string]string{ClusterLabel: cluster.Name}
+	// Wait until the APIs are installed
+	workspaceDiscovery := test.Client().Core().Cluster(cluster.ClusterName).Discovery()
+	test.Eventually(IsAPIInstalled(workspaceDiscovery, corev1.SchemeGroupVersion.String(), "Service")).Should(BeTrue())
+	test.Eventually(IsAPIInstalled(workspaceDiscovery, appsv1.SchemeGroupVersion.String(), "Deployment")).Should(BeTrue())
+	test.Eventually(IsAPIInstalled(workspaceDiscovery, networkingv1.SchemeGroupVersion.String(), "Ingress")).Should(BeTrue())
 
-					deployment := newDeployment(name, labels)
-					deployment, err = test.Client().Core().Cluster(namespace.ClusterName).AppsV1().Deployments(namespace.Name).Create(test.Ctx(), deployment, metav1.CreateOptions{})
-					test.Expect(err).NotTo(HaveOccurred())
+	// Create a namespace with automatic scheduling disabled
+	namespace := test.NewTestNamespace(InWorkspace(workspace), WithLabel("experimental.scheduling.kcp.dev/disabled", ""))
 
-					service := newService(name, labels)
-					service, err = test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).Create(test.Ctx(), service, metav1.CreateOptions{})
-					test.Expect(err).NotTo(HaveOccurred())
+	name := "echo"
+	labels := map[string]string{ClusterLabel: cluster.Name}
 
-					ingress := newIngress(name)
-					ingress, err = test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).Create(test.Ctx(), ingress, metav1.CreateOptions{})
-					test.Expect(err).NotTo(HaveOccurred())
+	deployment := newDeployment(name, labels)
+	deployment, err = test.Client().Core().Cluster(namespace.ClusterName).AppsV1().Deployments(namespace.Name).Create(test.Ctx(), deployment, metav1.CreateOptions{})
+	test.Expect(err).NotTo(HaveOccurred())
 
-					test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(WithTransform(LoadBalancerIngresses, HaveLen(1)))
-				})
-		})
+	service := newService(name, labels)
+	service, err = test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).Create(test.Ctx(), service, metav1.CreateOptions{})
+	test.Expect(err).NotTo(HaveOccurred())
+
+	ingress := newIngress(name)
+	ingress, err = test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).Create(test.Ctx(), ingress, metav1.CreateOptions{})
+	test.Expect(err).NotTo(HaveOccurred())
+
+	test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(WithTransform(LoadBalancerIngresses, HaveLen(1)))
 }
 
 func newIngress(name string) *networkingv1.Ingress {

@@ -7,28 +7,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/onsi/gomega"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
 )
-
-type WithWorkspace struct {
-	Test
-}
-
-func (w *WithWorkspace) Do(f func(workspace *tenancyv1alpha1.Workspace)) {
-	workspace := createTestWorkspace(w)
-	defer deleteTestWorkspace(w, workspace)
-
-	w.Eventually(Workspace(w, workspace.Name)).Should(
-		gomega.WithTransform(
-			ConditionStatus(tenancyv1alpha1.WorkspaceScheduled),
-			gomega.Equal(corev1.ConditionTrue),
-		))
-
-	invokeWorkspaceTestCode(w, workspace, f)
-}
 
 func Workspace(t Test, name string) func() *tenancyv1alpha1.Workspace {
 	return func() *tenancyv1alpha1.Workspace {
@@ -60,17 +42,6 @@ func createTestWorkspace(t Test) *tenancyv1alpha1.Workspace {
 	}
 
 	return workspace
-}
-
-func invokeWorkspaceTestCode(t Test, workspace *tenancyv1alpha1.Workspace, do func(*tenancyv1alpha1.Workspace)) {
-	defer func() {
-		// nolint: staticcheck
-		if t.T().Failed() {
-			// TODO
-		}
-	}()
-
-	do(workspace)
 }
 
 func deleteTestWorkspace(t Test, workspace *tenancyv1alpha1.Workspace) {

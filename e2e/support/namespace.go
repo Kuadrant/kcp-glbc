@@ -14,11 +14,6 @@ import (
 	tenancyhelper "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1/helper"
 )
 
-type WithNamespace struct {
-	Test
-	options []NamespaceOption
-}
-
 type NamespaceOption interface {
 	ApplyTo(namespace *corev1.Namespace) error
 }
@@ -65,13 +60,6 @@ func WithLabels(labels map[string]string) NamespaceOption {
 	return &withLabels{labels}
 }
 
-func (n *WithNamespace) Do(f func(namespace *corev1.Namespace)) {
-	namespace := createTestNamespace(n, n.options...)
-	defer deleteTestNamespace(n, namespace)
-
-	invokeNamespaceTestCode(n, namespace, f)
-}
-
 func createTestNamespace(t Test, options ...NamespaceOption) *corev1.Namespace {
 	name := "test-" + uuid.New().String()
 
@@ -93,17 +81,6 @@ func createTestNamespace(t Test, options ...NamespaceOption) *corev1.Namespace {
 	t.Expect(err).NotTo(gomega.HaveOccurred())
 
 	return namespace
-}
-
-func invokeNamespaceTestCode(t Test, namespace *corev1.Namespace, do func(namespace *corev1.Namespace)) {
-	defer func() {
-		// nolint: staticcheck
-		if t.T().Failed() {
-			// TODO
-		}
-	}()
-
-	do(namespace)
 }
 
 func deleteTestNamespace(t Test, namespace *corev1.Namespace) {

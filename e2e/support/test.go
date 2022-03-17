@@ -9,6 +9,10 @@ import (
 	"testing"
 
 	"github.com/onsi/gomega"
+
+	corev1 "k8s.io/api/core/v1"
+
+	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
 )
 
 type Test interface {
@@ -18,8 +22,8 @@ type Test interface {
 
 	gomega.Gomega
 
-	WithNewTestWorkspace() *WithWorkspace
-	WithNewTestNamespace(...NamespaceOption) *WithNamespace
+	NewTestWorkspace() *tenancyv1alpha1.Workspace
+	NewTestNamespace(...NamespaceOption) *corev1.Namespace
 }
 
 func With(t *testing.T) Test {
@@ -64,10 +68,22 @@ func (t *T) Client() Client {
 	return t.client
 }
 
-func (t *T) WithNewTestWorkspace() *WithWorkspace {
-	return &WithWorkspace{t}
+func (t *T) NewTestWorkspace() *tenancyv1alpha1.Workspace {
+	workspace := createTestWorkspace(t)
+	t.T().Cleanup(func() {
+		deleteTestWorkspace(t, workspace)
+	})
+	t.Eventually(Workspace(t, workspace.Name)).Should(gomega.WithTransform(
+		ConditionStatus(tenancyv1alpha1.WorkspaceScheduled),
+		gomega.Equal(corev1.ConditionTrue),
+	))
+	return workspace
 }
 
-func (t *T) WithNewTestNamespace(options ...NamespaceOption) *WithNamespace {
-	return &WithNamespace{t, options}
+func (t *T) NewTestNamespace(options ...NamespaceOption) *corev1.Namespace {
+	namespace := createTestNamespace(t, options...)
+	t.T().Cleanup(func() {
+		deleteTestNamespace(t, namespace)
+	})
+	return namespace
 }
