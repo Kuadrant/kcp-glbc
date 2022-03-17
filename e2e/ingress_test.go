@@ -20,7 +20,6 @@ import (
 	networkingv1apply "k8s.io/client-go/applyconfigurations/networking/v1"
 
 	clusterv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/cluster/v1alpha1"
-	tenancyhelper "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1/helper"
 
 	. "github.com/kuadrant/kcp-glbc/e2e/support"
 	kuadrantv1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
@@ -35,10 +34,6 @@ func TestIngress(t *testing.T) {
 	// Create the test workspace
 	workspace := test.NewTestWorkspace()
 
-	// Get the encoded logical cluster name for the workspace
-	logicalCluster, err := tenancyhelper.EncodeLogicalClusterName(workspace)
-	test.Expect(err).NotTo(HaveOccurred())
-
 	// Register workload cluster 1 into the test workspace
 	cluster1 := test.NewWorkloadCluster("cluster1", WithKubeConfigByName, InWorkspace(workspace))
 
@@ -48,11 +43,12 @@ func TestIngress(t *testing.T) {
 		Equal(corev1.ConditionTrue),
 	))
 
-	// Wait until the APIs are installed
-	workspaceDiscovery := test.Client().Core().Cluster(logicalCluster).Discovery()
-	test.Eventually(IsAPIInstalled(workspaceDiscovery, corev1.SchemeGroupVersion.String(), "Service")).Should(BeTrue())
-	test.Eventually(IsAPIInstalled(workspaceDiscovery, appsv1.SchemeGroupVersion.String(), "Deployment")).Should(BeTrue())
-	test.Eventually(IsAPIInstalled(workspaceDiscovery, networkingv1.SchemeGroupVersion.String(), "Ingress")).Should(BeTrue())
+	// Wait until the APIs are imported into the workspace
+	test.Eventually(HasImportedAPIs(test, workspace,
+		corev1.SchemeGroupVersion.WithKind("Service"),
+		appsv1.SchemeGroupVersion.WithKind("Deployment"),
+		networkingv1.SchemeGroupVersion.WithKind("Ingress"),
+	)).Should(BeTrue())
 
 	// Create a namespace with automatic scheduling disabled
 	namespace := test.NewTestNamespace(InWorkspace(workspace), WithLabel("experimental.scheduling.kcp.dev/disabled", ""))

@@ -7,7 +7,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/onsi/gomega"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
 	tenancyhelper "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1/helper"
@@ -28,6 +30,34 @@ func (o *inWorkspace) applyTo(object metav1.Object) error {
 	}
 	object.SetClusterName(clusterName)
 	return nil
+}
+
+func HasImportedAPIs(t Test, workspace *tenancyv1alpha1.Workspace, GVKs ...schema.GroupVersionKind) func(g gomega.Gomega) bool {
+	return func(g gomega.Gomega) bool {
+		// Get the encoded logical cluster name for the workspace
+		logicalCluster, err := tenancyhelper.EncodeLogicalClusterName(workspace)
+		t.Expect(err).NotTo(gomega.HaveOccurred())
+
+		discovery := t.Client().Core().Cluster(logicalCluster).Discovery()
+
+		for _, GKV := range GVKs {
+			resources, err := discovery.ServerResourcesForGroupVersion(GKV.GroupVersion().String())
+			if err != nil {
+				if errors.IsNotFound(err) {
+					return false
+				}
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+			}
+			for _, resource := range resources.APIResources {
+				if resource.Kind == GKV.Kind {
+					return true
+				}
+			}
+			return false
+		}
+
+		return true
+	}
 }
 
 func Workspace(t Test, name string) func() *tenancyv1alpha1.Workspace {
