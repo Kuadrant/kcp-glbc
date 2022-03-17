@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -18,6 +19,8 @@ import (
 	tenancyhelper "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1/helper"
 
 	. "github.com/kuadrant/kcp-glbc/e2e/support"
+	kuadrantv1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
+	kuadrantcluster "github.com/kuadrant/kcp-glbc/pkg/cluster"
 )
 
 func TestIngress(t *testing.T) {
@@ -59,11 +62,30 @@ func TestIngress(t *testing.T) {
 	service, err = test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).Create(test.Ctx(), service, metav1.CreateOptions{})
 	test.Expect(err).NotTo(HaveOccurred())
 
+	// Create the root Ingress
 	ingress := newIngress(name)
 	ingress, err = test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).Create(test.Ctx(), ingress, metav1.CreateOptions{})
 	test.Expect(err).NotTo(HaveOccurred())
 
-	test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(WithTransform(LoadBalancerIngresses, HaveLen(1)))
+	// Wait until the root Ingress is reconciled with the load balancer Ingresses
+	test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(And(
+		WithTransform(Annotations, HaveKey(kuadrantcluster.ANNOTATION_HCG_HOST)),
+		WithTransform(LoadBalancerIngresses, HaveLen(1)),
+	))
+
+	// Retrieve the root Ingress
+	ingress = GetIngress(test, namespace, name)
+
+	// Check a DNSRecord is created for the root Ingress with the expected Spec
+	test.Eventually(DNSRecord(test, namespace, name)).Should(PointTo(MatchFields(IgnoreExtras, Fields{
+		"Spec": MatchFields(IgnoreExtras,
+			Fields{
+				"DNSName":    Equal(ingress.Annotations[kuadrantcluster.ANNOTATION_HCG_HOST]),
+				"Targets":    ConsistOf(ingress.Status.LoadBalancer.Ingress[0].IP),
+				"RecordType": Equal(kuadrantv1.ARecordType),
+				"RecordTTL":  Equal(int64(60)),
+			}),
+	})))
 }
 
 func newIngress(name string) *networkingv1.Ingress {

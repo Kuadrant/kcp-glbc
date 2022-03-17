@@ -11,6 +11,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func GetIngress(t Test, namespace *corev1.Namespace, name string) *networkingv1.Ingress {
+	return Ingress(t, namespace, name)(t)
+}
+
 func Ingress(t Test, namespace *corev1.Namespace, name string) func(g gomega.Gomega) *networkingv1.Ingress {
 	return func(g gomega.Gomega) *networkingv1.Ingress {
 		ingress, err := t.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).Get(t.Ctx(), name, metav1.GetOptions{})
