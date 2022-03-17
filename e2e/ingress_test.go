@@ -40,11 +40,7 @@ func TestIngress(t *testing.T) {
 	test.Expect(err).NotTo(HaveOccurred())
 
 	// Register workload cluster 1 into the test workspace
-	cluster1, err := NewWorkloadClusterWithKubeConfig("cluster1")
-	test.Expect(err).NotTo(HaveOccurred())
-
-	cluster1, err = test.Client().Kcp().Cluster(logicalCluster).ClusterV1alpha1().Clusters().Create(test.Ctx(), cluster1, metav1.CreateOptions{})
-	test.Expect(err).NotTo(HaveOccurred())
+	cluster1 := test.NewWorkloadCluster("cluster1", WithKubeConfigByName, InWorkspace(workspace))
 
 	// Wait until cluster 1 is ready
 	test.Eventually(WorkloadCluster(test, cluster1.ClusterName, cluster1.Name)).Should(WithTransform(
@@ -100,11 +96,7 @@ func TestIngress(t *testing.T) {
 	})))
 
 	// Register workload cluster 2 into the test workspace
-	cluster2, err := NewWorkloadClusterWithKubeConfig("cluster2")
-	test.Expect(err).NotTo(HaveOccurred())
-
-	cluster2, err = test.Client().Kcp().Cluster(logicalCluster).ClusterV1alpha1().Clusters().Create(test.Ctx(), cluster2, metav1.CreateOptions{})
-	test.Expect(err).NotTo(HaveOccurred())
+	cluster2 := test.NewWorkloadCluster("cluster2", WithKubeConfigByName, InWorkspace(workspace))
 
 	// Wait until cluster 2 is ready
 	test.Eventually(WorkloadCluster(test, cluster1.ClusterName, cluster1.Name)).Should(WithTransform(

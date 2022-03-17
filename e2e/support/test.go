@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	clusterv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/cluster/v1alpha1"
 	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
 )
 
@@ -25,6 +26,7 @@ type Test interface {
 
 	NewTestWorkspace() *tenancyv1alpha1.Workspace
 	NewTestNamespace(...Option) *corev1.Namespace
+	NewWorkloadCluster(name string, options ...Option) *clusterv1alpha1.Cluster
 }
 
 type Option interface {
@@ -91,4 +93,8 @@ func (t *T) NewTestNamespace(options ...Option) *corev1.Namespace {
 		deleteTestNamespace(t, namespace)
 	})
 	return namespace
+}
+
+func (t *T) NewWorkloadCluster(name string, options ...Option) *clusterv1alpha1.Cluster {
+	return newWorkloadCluster(t, name, options...)
 }
