@@ -63,7 +63,7 @@ func TestIngress(t *testing.T) {
 					ingress, err = test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).Create(test.Ctx(), ingress, metav1.CreateOptions{})
 					test.Expect(err).NotTo(HaveOccurred())
 
-					test.Eventually(Ingress(test, namespace, name)).Should(WithTransform(LoadBalancerIngresses, HaveLen(1)))
+					test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(WithTransform(LoadBalancerIngresses, HaveLen(1)))
 				})
 		})
 }
