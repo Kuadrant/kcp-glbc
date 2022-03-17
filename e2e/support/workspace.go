@@ -10,7 +10,25 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
+	tenancyhelper "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1/helper"
 )
+
+func InWorkspace(workspace *tenancyv1alpha1.Workspace) Option {
+	return &inWorkspace{workspace}
+}
+
+type inWorkspace struct {
+	workspace *tenancyv1alpha1.Workspace
+}
+
+func (o *inWorkspace) applyTo(object metav1.Object) error {
+	clusterName, err := tenancyhelper.EncodeLogicalClusterName(o.workspace)
+	if err != nil {
+		return err
+	}
+	object.SetClusterName(clusterName)
+	return nil
+}
 
 func Workspace(t Test, name string) func() *tenancyv1alpha1.Workspace {
 	return func() *tenancyv1alpha1.Workspace {

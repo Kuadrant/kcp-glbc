@@ -11,6 +11,7 @@ import (
 	"github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
 )
@@ -23,7 +24,11 @@ type Test interface {
 	gomega.Gomega
 
 	NewTestWorkspace() *tenancyv1alpha1.Workspace
-	NewTestNamespace(...NamespaceOption) *corev1.Namespace
+	NewTestNamespace(...Option) *corev1.Namespace
+}
+
+type Option interface {
+	applyTo(metav1.Object) error
 }
 
 func With(t *testing.T) Test {
@@ -80,7 +85,7 @@ func (t *T) NewTestWorkspace() *tenancyv1alpha1.Workspace {
 	return workspace
 }
 
-func (t *T) NewTestNamespace(options ...NamespaceOption) *corev1.Namespace {
+func (t *T) NewTestNamespace(options ...Option) *corev1.Namespace {
 	namespace := createTestNamespace(t, options...)
 	t.T().Cleanup(func() {
 		deleteTestNamespace(t, namespace)
