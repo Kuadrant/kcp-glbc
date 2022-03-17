@@ -64,7 +64,14 @@ jobs:
           cluster_name: cluster1
           node_image: kindest/node:v1.21.1@sha256:fae9a58f17f18f06aeac9772ca8b5ac680ebbed985e266f711d936e91d113bad
           version: v0.11.0
-          config: ./e2e/cluster.yaml
+          config: ./e2e/kind.yaml
+      - name: Kubernetes KinD Cluster 2
+        uses: helm/kind-action@v1.2.0
+        with:
+          cluster_name: cluster2
+          node_image: kindest/node:v1.21.1@sha256:fae9a58f17f18f06aeac9772ca8b5ac680ebbed985e266f711d936e91d113bad
+          version: v0.11.0
+          config: ./e2e/kind.yaml
       - name: Info
         run: |
           echo "GLBC cluster:"
@@ -74,6 +81,10 @@ jobs:
           echo "Cluster 1:"
           kubectl --context kind-cluster1 cluster-info
           kubectl --context kind-cluster1 describe nodes
+          
+          echo "Cluster 2:"
+          kubectl --context kind-cluster2 cluster-info
+          kubectl --context kind-cluster2 describe nodes
       - name: Run GLBC and KCP
         run: |
           echo "Building GLBC"
@@ -89,11 +100,16 @@ jobs:
           echo "CLUSTERS_KUBECONFIG_DIR=${CLUSTERS_KUBECONFIG_DIR}" >> $GITHUB_ENV
           echo "Creating Cluster manifests in directory ${CLUSTERS_KUBECONFIG_DIR}"
           kind get kubeconfig --name=cluster1 > "${CLUSTERS_KUBECONFIG_DIR}"/cluster1.yaml
+          kind get kubeconfig --name=cluster2 > "${CLUSTERS_KUBECONFIG_DIR}"/cluster2.yaml
           
           echo "Deploying Ingress controller to KinD clusters"
-          kubectl config use-context kind-cluster1
-          
           VERSION=$(curl https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/stable.txt)
+          
+          kubectl config use-context kind-cluster1
+          curl https://raw.githubusercontent.com/kubernetes/ingress-nginx/"${VERSION}"/deploy/static/provider/kind/deploy.yaml | sed "s/--publish-status-address=localhost/--report-node-internal-ip-address/g" | kubectl apply -f -
+          kubectl annotate ingressclass nginx "ingressclass.kubernetes.io/is-default-class=true"
+          
+          kubectl config use-context kind-cluster2
           curl https://raw.githubusercontent.com/kubernetes/ingress-nginx/"${VERSION}"/deploy/static/provider/kind/deploy.yaml | sed "s/--publish-status-address=localhost/--report-node-internal-ip-address/g" | kubectl apply -f -
           kubectl annotate ingressclass nginx "ingressclass.kubernetes.io/is-default-class=true"
           
