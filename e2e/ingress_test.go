@@ -58,18 +58,18 @@ func TestIngress(t *testing.T) {
 	// Create the Deployment and Service for cluster 1
 	syncToCluster1 := map[string]string{ClusterLabel: cluster1.Name}
 
-	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).AppsV1().Deployments(namespace.Name).
-		Apply(test.Ctx(), deploymentConfiguration(namespace.Name, name+"1", syncToCluster1), applyOptions)).
-		Error().NotTo(HaveOccurred())
+	_, err := test.Client().Core().Cluster(namespace.ClusterName).AppsV1().Deployments(namespace.Name).
+		Apply(test.Ctx(), deploymentConfiguration(namespace.Name, name+"1", syncToCluster1), applyOptions)
+	test.Expect(err).NotTo(HaveOccurred())
 
-	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).
-		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name+"1", syncToCluster1), applyOptions)).
-		Error().NotTo(HaveOccurred())
+	_, err = test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).
+		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name+"1", syncToCluster1), applyOptions)
+	test.Expect(err).NotTo(HaveOccurred())
 
 	// Create the root Ingress
-	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).
-		Apply(test.Ctx(), ingressConfiguration(namespace.Name, name, name+"1"), applyOptions)).
-		Error().NotTo(HaveOccurred())
+	_, err = test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).
+		Apply(test.Ctx(), ingressConfiguration(namespace.Name, name, name+"1"), applyOptions)
+	test.Expect(err).NotTo(HaveOccurred())
 
 	// Wait until the root Ingress is reconciled with the load balancer Ingresses
 	test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(And(
@@ -103,18 +103,18 @@ func TestIngress(t *testing.T) {
 	// Create the Deployment and Service for cluster 2
 	syncToCluster2 := map[string]string{ClusterLabel: cluster2.Name}
 
-	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).AppsV1().Deployments(namespace.Name).
-		Apply(test.Ctx(), deploymentConfiguration(namespace.Name, name+"2", syncToCluster2), applyOptions)).
-		Error().NotTo(HaveOccurred())
+	_, err = test.Client().Core().Cluster(namespace.ClusterName).AppsV1().Deployments(namespace.Name).
+		Apply(test.Ctx(), deploymentConfiguration(namespace.Name, name+"2", syncToCluster2), applyOptions)
+	test.Expect(err).NotTo(HaveOccurred())
 
-	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).
-		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name+"2", syncToCluster2), applyOptions)).
-		Error().NotTo(HaveOccurred())
+	_, err = test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).
+		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name+"2", syncToCluster2), applyOptions)
+	test.Expect(err).NotTo(HaveOccurred())
 
 	// Update the root Ingress
-	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).
-		Apply(test.Ctx(), ingressConfiguration(namespace.Name, name, name+"1", name+"2"), applyOptions)).
-		Error().NotTo(HaveOccurred())
+	_, err = test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).
+		Apply(test.Ctx(), ingressConfiguration(namespace.Name, name, name+"1", name+"2"), applyOptions)
+	test.Expect(err).NotTo(HaveOccurred())
 
 	// Wait until the root Ingress is reconciled with the load balancer Ingresses
 	test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(And(
