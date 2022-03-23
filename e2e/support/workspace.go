@@ -40,6 +40,7 @@ func HasImportedAPIs(t Test, workspace *tenancyv1alpha1.Workspace, GVKs ...schem
 
 		discovery := t.Client().Core().Cluster(logicalCluster).Discovery()
 
+	GVKs:
 		for _, GKV := range GVKs {
 			resources, err := discovery.ServerResourcesForGroupVersion(GKV.GroupVersion().String())
 			if err != nil {
@@ -50,7 +51,7 @@ func HasImportedAPIs(t Test, workspace *tenancyv1alpha1.Workspace, GVKs ...schem
 			}
 			for _, resource := range resources.APIResources {
 				if resource.Kind == GKV.Kind {
-					return true
+					continue GVKs
 				}
 			}
 			return false
