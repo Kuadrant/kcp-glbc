@@ -23,6 +23,18 @@ func Ingress(t Test, namespace *corev1.Namespace, name string) func(g gomega.Gom
 	}
 }
 
+func GetIngresses(t Test, namespace *corev1.Namespace, labelSelector string) []networkingv1.Ingress {
+	return Ingresses(t, namespace, labelSelector)(t)
+}
+
+func Ingresses(t Test, namespace *corev1.Namespace, labelSelector string) func(g gomega.Gomega) []networkingv1.Ingress {
+	return func(g gomega.Gomega) []networkingv1.Ingress {
+		ingresses, err := t.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).List(t.Ctx(), metav1.ListOptions{LabelSelector: labelSelector})
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		return ingresses.Items
+	}
+}
+
 func LoadBalancerIngresses(ingress *networkingv1.Ingress) []corev1.LoadBalancerIngress {
 	return ingress.Status.LoadBalancer.Ingress
 }

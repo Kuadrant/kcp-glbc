@@ -5,6 +5,7 @@ package e2e
 
 import (
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -25,6 +26,7 @@ import (
 	kuadrantv1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
 	kuadrantcluster "github.com/kuadrant/kcp-glbc/pkg/cluster"
 	"github.com/kuadrant/kcp-glbc/pkg/reconciler/service"
+	"github.com/kuadrant/kcp-glbc/pkg/util/deleteDelay"
 )
 
 var applyOptions = metav1.ApplyOptions{FieldManager: "kcp-glbc-e2e", Force: true}
@@ -127,6 +129,40 @@ func TestIngress(t *testing.T) {
 				"RecordTTL":  Equal(int64(60)),
 			}),
 	})))
+
+	// Update the root Service to have it placed on cluster 2 only
+	_, err = test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).
+		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name, map[string]string{service.PlacementAnnotationName: cluster2.Name}), applyOptions)
+	test.Expect(err).NotTo(HaveOccurred())
+
+	// Wait until the root Ingress is reconciled with the load balancer Ingresses
+	test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(And(
+		WithTransform(Annotations, HaveKey(kuadrantcluster.ANNOTATION_HCG_HOST)),
+		WithTransform(LoadBalancerIngresses, HaveLen(1)),
+	))
+
+	// Retrieve the root Ingress
+	ingress = GetIngress(test, namespace, name)
+
+	// Check a DNSRecord for the root Ingress is updated with the expected Spec
+	test.Eventually(DNSRecord(test, namespace, name)).Should(PointTo(MatchFields(IgnoreExtras, Fields{
+		"Spec": MatchFields(IgnoreExtras,
+			Fields{
+				"DNSName":    Equal(ingress.Annotations[kuadrantcluster.ANNOTATION_HCG_HOST]),
+				"Targets":    ConsistOf(ingress.Status.LoadBalancer.Ingress[0].IP),
+				"RecordType": Equal(kuadrantv1.ARecordType),
+				"RecordTTL":  Equal(int64(60)),
+			}),
+	})))
+
+	gracePeriodDuration := deleteDelay.TTLDefault - 10*time.Second // take some slack
+	cluster1LabelSelector := ClusterLabel + "=" + cluster1.Name
+
+	// Check the shadow Ingress, Service and Deployment for cluster 1 are not deleted before the grace period expires
+	test.Consistently(getShadowResources(test, namespace, cluster1LabelSelector), gracePeriodDuration).Should(HaveLen(3))
+
+	// Finally, check the shadow Ingress, Service and Deployment for cluster 1 are deleted, once the grace period has expired
+	test.Eventually(getShadowResources(test, namespace, cluster1LabelSelector)).Should(BeEmpty())
 }
 
 func ingressConfiguration(namespace, name string) *networkingv1apply.IngressApplyConfiguration {
@@ -169,4 +205,20 @@ func serviceConfiguration(namespace, name string, annotations map[string]string)
 				WithPort(80).
 				WithTargetPort(intstr.FromString("http")).
 				WithProtocol(corev1.ProtocolTCP)))
+}
+
+func getShadowResources(test Test, namespace *corev1.Namespace, labelSelector string) func() []interface{} {
+	return func() []interface{} {
+		var resources []interface{}
+		for _, ingress := range GetIngresses(test, namespace, labelSelector) {
+			resources = append(resources, ingress)
+		}
+		for _, svc := range GetServices(test, namespace, labelSelector) {
+			resources = append(resources, svc)
+		}
+		for _, deployment := range GetDeployments(test, namespace, labelSelector) {
+			resources = append(resources, deployment)
+		}
+		return resources
+	}
 }
