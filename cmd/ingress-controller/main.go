@@ -2,9 +2,10 @@ package main
 
 import (
 	"flag"
+	"time"
+
 	"github.com/kuadrant/kcp-glbc/pkg/reconciler/deployment"
 	"github.com/kuadrant/kcp-glbc/pkg/reconciler/service"
-	"time"
 
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/client-go/informers"
@@ -88,7 +89,7 @@ func main() {
 	}
 	klog.Info("using tls cert provider ", tlsCertProvider, *tlsProvider)
 
-	//certman client targets the control cluster, this is the same cluster as glbc is deployed to
+	// certman client targets the control cluster, this is the same cluster as glbc is deployed to
 	certClient := certmanclient.NewForConfigOrDie(gr)
 	certConfig := certmanager.CertManagerConfig{
 		DNSValidator: certmanager.DNSValidatorRoute53,
@@ -117,7 +118,6 @@ func main() {
 		GlbcKubeClient:        glbcTypedClient,
 		KcpClient:             kubeClient,
 	})
-
 	if err != nil {
 		klog.Fatal(err)
 	}
@@ -144,6 +144,9 @@ func main() {
 		SharedInformerFactory: kuadrantInformerFactory,
 		DNSProvider:           dnsProvider,
 	})
+	if err != nil {
+		klog.Fatal(err)
+	}
 
 	serviceController, err := service.NewController(&service.ControllerConfig{
 		ServicesClient:        kubeClient,
@@ -152,6 +155,7 @@ func main() {
 	if err != nil {
 		klog.Fatal(err)
 	}
+
 	deploymentController, err := deployment.NewController(&deployment.ControllerConfig{
 		DeploymentClient:      kubeClient,
 		SharedInformerFactory: kubeInformerFactory,
