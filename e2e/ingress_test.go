@@ -158,11 +158,25 @@ func TestIngress(t *testing.T) {
 	gracePeriodDuration := deleteDelay.TTLDefault - 10*time.Second // take some slack
 	cluster1LabelSelector := ClusterLabel + "=" + cluster1.Name
 
-	// Check the shadow Ingress, Service and Deployment for cluster 1 are not deleted before the grace period expires
+	// Check the shadow resources for cluster 1 are not deleted before the grace period expires
 	test.Consistently(getShadowResources(test, namespace, cluster1LabelSelector), gracePeriodDuration).Should(HaveLen(3))
 
-	// Finally, check the shadow Ingress, Service and Deployment for cluster 1 are deleted, once the grace period has expired
+	// Then, check the shadow resources for cluster 1 are deleted, once the grace period has expired
 	test.Eventually(getShadowResources(test, namespace, cluster1LabelSelector)).Should(BeEmpty())
+
+	// Finally, delete the root resources
+	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).NetworkingV1().Ingresses(namespace.Name).
+		Delete(test.Ctx(), name, metav1.DeleteOptions{})).
+		To(Succeed())
+	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).CoreV1().Services(namespace.Name).
+		Delete(test.Ctx(), name, metav1.DeleteOptions{})).
+		To(Succeed())
+	test.Expect(test.Client().Core().Cluster(namespace.ClusterName).AppsV1().Deployments(namespace.Name).
+		Delete(test.Ctx(), name, metav1.DeleteOptions{})).
+		To(Succeed())
+
+	// And check all the remaining shadow resources are deleted immediately
+	test.Eventually(getShadowResources(test, namespace, ClusterLabel), 15*time.Second).Should(BeEmpty())
 }
 
 func ingressConfiguration(namespace, name string) *networkingv1apply.IngressApplyConfiguration {
