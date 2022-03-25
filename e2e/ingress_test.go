@@ -97,7 +97,7 @@ func TestIngress(t *testing.T) {
 	cluster2 := test.NewWorkloadCluster("cluster2", WithKubeConfigByName, InWorkspace(workspace))
 
 	// Wait until cluster 2 is ready
-	test.Eventually(WorkloadCluster(test, cluster1.ClusterName, cluster1.Name)).Should(WithTransform(
+	test.Eventually(WorkloadCluster(test, cluster2.ClusterName, cluster2.Name)).Should(WithTransform(
 		ConditionStatus(clusterv1alpha1.ClusterReadyCondition),
 		Equal(corev1.ConditionTrue),
 	))
