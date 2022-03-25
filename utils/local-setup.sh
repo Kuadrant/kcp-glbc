@@ -1,4 +1,21 @@
 #!/bin/bash
+
+#
+# Copyright 2021 Red Hat, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 usage() { echo "usage: ./local-setup.sh -c <number of clusters>" 1>&2; exit 1; }
 while getopts ":c:" arg; do
   case "${arg}" in
@@ -16,21 +33,7 @@ shift $((OPTIND-1))
 if [ -z "${NUM_CLUSTERS}" ]; then
     usage
 fi
-#
-# Copyright 2021 Red Hat, Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 set -e pipefail
 
 trap cleanup EXIT 1 2 3 6 15
@@ -93,6 +96,8 @@ nodes:
     protocol: TCP
 EOF
 
+  ${KIND_BIN} get kubeconfig --name=${cluster} > ${TEMP_DIR}/${cluster}.kubeconfig
+
   echo "Creating Cluster objects for the kind cluster."
   ${KIND_BIN} get kubeconfig --name=${cluster} | sed -e 's/^/    /' | cat utils/kcp-contrib/cluster.yaml - | sed -e "s/name: local/name: ${cluster}/" > ${TEMP_DIR}/${cluster}.yaml
 
@@ -130,7 +135,7 @@ do
 done
 
 echo "Starting KCP, sending logs to ${KCP_LOG_FILE}"
-${KCP_BIN} start --push-mode --run-controllers --resources-to-sync=secrets --resources-to-sync=deployments --resources-to-sync=services --resources-to-sync=ingresses.networking.k8s.io --auto-publish-apis > ${KCP_LOG_FILE} 2>&1 &
+${KCP_BIN} start --push-mode --discovery-poll-interval 3s --run-controllers --resources-to-sync=secrets,deployments,services,ingresses.networking.k8s.io --auto-publish-apis > ${KCP_LOG_FILE} 2>&1 &
 KCP_PID=$!
 
 echo "Waiting 15 seconds..."
@@ -146,6 +151,11 @@ fi
 echo "Exporting KUBECONFIG=.kcp/admin.kubeconfig"
 export KUBECONFIG=.kcp/admin.kubeconfig
 
+echo "Creating workspace shard"
+kubectl create namespace default
+kubectl create secret generic kubeconfig --from-file=kubeconfig="${KUBECONFIG}"
+kubectl apply -f ./utils/kcp-contrib/workspace-shard.yaml
+
 echo "Registering kind k8s clusters into KCP"
 kubectl apply -f ./tmp/
 
@@ -154,14 +164,13 @@ kubectl apply -f ./config/crd
 
 echo ""
 echo "KCP PID          : ${KCP_PID}"
-echo "Controller 2 PID : ${CONTROLLER_2}"
 echo ""
 echo "The kind k8s clusters have been registered, and KCP is running, now you should run the kcp-ingress"
 echo "example: "
 echo ""
-echo "       ./bin/ingress-controller -kubeconfig .kcp/admin.kubeconfig -glbc-kubeconfig ${TEMP_DIR}/${KCP_GLBC_KUBECONFIG}"
+echo "       ./bin/ingress-controller -kubeconfig .kcp/admin.kubeconfig -context admin -glbc-kubeconfig ${TEMP_DIR}/${KCP_GLBC_KUBECONFIG}"
 echo ""
-echo "Dont forget to export the proper KUBECONFIG to create objects against KCP:"
+echo "Don't forget to export the proper KUBECONFIG to create objects against KCP:"
 echo "export KUBECONFIG=${PWD}/.kcp/admin.kubeconfig"
 echo ""
 read -p "Press enter to exit -> It will kill the KCP process running in background"

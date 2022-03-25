@@ -61,14 +61,14 @@ jobs:
       - name: Kubernetes KinD Cluster 1
         uses: helm/kind-action@v1.2.0
         with:
-          cluster_name: cluster1
+          cluster_name: kcp-cluster-1
           node_image: kindest/node:v1.21.1@sha256:fae9a58f17f18f06aeac9772ca8b5ac680ebbed985e266f711d936e91d113bad
           version: v0.11.0
           config: ./e2e/kind.yaml
       - name: Kubernetes KinD Cluster 2
         uses: helm/kind-action@v1.2.0
         with:
-          cluster_name: cluster2
+          cluster_name: kcp-cluster-2
           node_image: kindest/node:v1.21.1@sha256:fae9a58f17f18f06aeac9772ca8b5ac680ebbed985e266f711d936e91d113bad
           version: v0.11.0
           config: ./e2e/kind.yaml
@@ -79,12 +79,12 @@ jobs:
           kubectl --context kind-glbc describe nodes
           
           echo "Cluster 1:"
-          kubectl --context kind-cluster1 cluster-info
-          kubectl --context kind-cluster1 describe nodes
+          kubectl --context kind-kcp-cluster-1 cluster-info
+          kubectl --context kind-kcp-cluster-1 describe nodes
           
           echo "Cluster 2:"
-          kubectl --context kind-cluster2 cluster-info
-          kubectl --context kind-cluster2 describe nodes
+          kubectl --context kind-kcp-cluster-2 cluster-info
+          kubectl --context kind-kcp-cluster-2 describe nodes
       - name: Run GLBC and KCP
         run: |
           echo "Building GLBC"
@@ -95,21 +95,21 @@ jobs:
           
           TEMP_DIR="$(pwd)/tmp"
           
-          CLUSTERS_KUBECONFIG_DIR="${TEMP_DIR}"/clusters
+          CLUSTERS_KUBECONFIG_DIR="${TEMP_DIR}"
           mkdir -p "${CLUSTERS_KUBECONFIG_DIR}"
           echo "CLUSTERS_KUBECONFIG_DIR=${CLUSTERS_KUBECONFIG_DIR}" >> $GITHUB_ENV
           echo "Creating Cluster manifests in directory ${CLUSTERS_KUBECONFIG_DIR}"
-          kind get kubeconfig --name=cluster1 > "${CLUSTERS_KUBECONFIG_DIR}"/cluster1.yaml
-          kind get kubeconfig --name=cluster2 > "${CLUSTERS_KUBECONFIG_DIR}"/cluster2.yaml
+          kind get kubeconfig --name=kcp-cluster-1 > "${CLUSTERS_KUBECONFIG_DIR}"/kcp-cluster-1.kubeconfig
+          kind get kubeconfig --name=kcp-cluster-2 > "${CLUSTERS_KUBECONFIG_DIR}"/kcp-cluster-2.kubeconfig
           
           echo "Deploying Ingress controller to KinD clusters"
           VERSION=$(curl https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/stable.txt)
           
-          kubectl config use-context kind-cluster1
+          kubectl config use-context kind-kcp-cluster-1
           curl https://raw.githubusercontent.com/kubernetes/ingress-nginx/"${VERSION}"/deploy/static/provider/kind/deploy.yaml | sed "s/--publish-status-address=localhost/--report-node-internal-ip-address/g" | kubectl apply -f -
           kubectl annotate ingressclass nginx "ingressclass.kubernetes.io/is-default-class=true"
           
-          kubectl config use-context kind-cluster2
+          kubectl config use-context kind-kcp-cluster-2
           curl https://raw.githubusercontent.com/kubernetes/ingress-nginx/"${VERSION}"/deploy/static/provider/kind/deploy.yaml | sed "s/--publish-status-address=localhost/--report-node-internal-ip-address/g" | kubectl apply -f -
           kubectl annotate ingressclass nginx "ingressclass.kubernetes.io/is-default-class=true"
           
@@ -135,7 +135,7 @@ jobs:
           echo "Creating workspace shard"
           kubectl create namespace default
           kubectl create secret generic kubeconfig --from-file=kubeconfig="${KUBECONFIG}"
-          kubectl apply -f e2e/workspace-shard.yaml
+          kubectl apply -f ./utils/kcp-contrib/workspace-shard.yaml
           
           echo "Registering GLBC APIs"
           kubectl apply -f ./config/crd
@@ -143,7 +143,7 @@ jobs:
           GLBC_LOG_FILE="${TEMP_DIR}"/glbc.log
           echo "GLBC_LOG_FILE=${GLBC_LOG_FILE}" >> $GITHUB_ENV
           echo "Starting GLBC, sending logs to ${GLBC_LOG_FILE}"
-          ./bin/ingress-controller -kubeconfig .kcp/admin.kubeconfig -glbc-kubeconfig "${HOME}"/.kube/config -dns-provider fake > ${GLBC_LOG_FILE} 2>&1 &
+          ./bin/ingress-controller -kubeconfig .kcp/admin.kubeconfig -context admin -glbc-kubeconfig "${HOME}"/.kube/config -dns-provider fake > ${GLBC_LOG_FILE} 2>&1 &
           GLBC_PID=$!
           echo "GLBC_PID=${GLBC_PID}" >> $GITHUB_ENV
           

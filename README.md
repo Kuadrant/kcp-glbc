@@ -70,6 +70,23 @@ kcp-cluster-crc   kcp-cluster-crc   True    ["deployments.apps","ingresses.netwo
 You must have crc installed(https://crc.dev/crc/), and have your openshift pull secret(https://cloud.redhat.com/openshift/create/local) stored locally in `~/pull-secret`. 
 Please check the script comments for any version requirements.
 
+## Development
+
+### Testing
+
+The e2e tests can be executed locally by running the following commands:
+
+```bash
+# Start KCP and the KinD clusters
+$ make local-setup
+# Start KCP GLBC
+$ ./bin/ingress-controller -kubeconfig .kcp/admin.kubeconfig -context admin -dns-provider fake -glbc-kubeconfig tmp/kcp-cluster-glbc-control.kubeconfig
+# Run the e2e test suite
+$ make e2e
+```
+
+Alternatively, You can run the KCP GLBC and/or the tests from your IDE / debugger.
+
 ## Overall diagram
 
 ```

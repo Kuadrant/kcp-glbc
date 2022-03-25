@@ -38,7 +38,7 @@ func TestIngress(t *testing.T) {
 	workspace := test.NewTestWorkspace()
 
 	// Register workload cluster 1 into the test workspace
-	cluster1 := test.NewWorkloadCluster("cluster1", WithKubeConfigByName, InWorkspace(workspace))
+	cluster1 := test.NewWorkloadCluster("kcp-cluster-1", WithKubeConfigByName, InWorkspace(workspace))
 
 	// Wait until cluster 1 is ready
 	test.Eventually(WorkloadCluster(test, cluster1.ClusterName, cluster1.Name)).Should(WithTransform(
@@ -94,7 +94,7 @@ func TestIngress(t *testing.T) {
 	})))
 
 	// Register workload cluster 2 into the test workspace
-	cluster2 := test.NewWorkloadCluster("cluster2", WithKubeConfigByName, InWorkspace(workspace))
+	cluster2 := test.NewWorkloadCluster("kcp-cluster-2", WithKubeConfigByName, InWorkspace(workspace))
 
 	// Wait until cluster 2 is ready
 	test.Eventually(WorkloadCluster(test, cluster2.ClusterName, cluster2.Name)).Should(WithTransform(

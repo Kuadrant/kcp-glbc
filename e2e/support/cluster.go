@@ -48,7 +48,7 @@ func (o *withKubeConfigByID) applyTo(object metav1.Object) error {
 	if dir == "" {
 		return fmt.Errorf("%s environment variable is not set", workloadClusterKubeConfigDir)
 	}
-	data, err := ioutil.ReadFile(path.Join(dir, o.ID+".yaml"))
+	data, err := ioutil.ReadFile(path.Join(dir, o.ID+".kubeconfig"))
 	if err != nil {
 		return fmt.Errorf("error reading cluster %q Kubeconfig: %v", o.ID, err)
 	}
