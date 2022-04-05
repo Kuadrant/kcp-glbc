@@ -3,14 +3,17 @@ package deployment
 import (
 	"context"
 	"fmt"
-	"github.com/kuadrant/kcp-glbc/pkg/reconciler/service"
-	"github.com/kuadrant/kcp-glbc/pkg/util/deleteDelay"
-	"github.com/kuadrant/kcp-glbc/pkg/util/metadata"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+
+	"github.com/kuadrant/kcp-glbc/pkg/reconciler/service"
+	"github.com/kuadrant/kcp-glbc/pkg/util/deleteDelay"
+	"github.com/kuadrant/kcp-glbc/pkg/util/metadata"
 )
 
 const (
@@ -39,22 +42,26 @@ func (c *Controller) reconcile(ctx context.Context, deployment *appsv1.Deploymen
 }
 
 func (c *Controller) reconcileRoot(ctx context.Context, deployment *appsv1.Deployment) error {
-	//add finalizers
+	// add finalizers
 	metadata.AddFinalizer(deployment, shadowCleanupFinalizer)
 
-	//find root services
+	// find root services
 	rootServices, err := c.findRootServices(deployment)
 	if err != nil {
 		return err
 	}
 
 	for _, rootService := range rootServices {
-		//generate and reconcile required shadow deployments
+		// generate and reconcile required shadow deployments
 		locations, _ := service.GetLocations(rootService)
 		desiredShadows := generateShadowDeployments(locations, deployment)
 		for _, shadow := range desiredShadows {
 			klog.Infof("creating shadow deployment %v", shadow.Name)
-			obj, exists, err := c.indexer.Get(shadow)
+			key, err := cache.MetaNamespaceKeyFunc(shadow)
+			if err != nil {
+				return err
+			}
+			obj, exists, err := c.indexer.GetByKey(key)
 			if err != nil {
 				return err
 			}
@@ -74,7 +81,7 @@ func (c *Controller) reconcileRoot(ctx context.Context, deployment *appsv1.Deplo
 			}
 		}
 
-		//find unrequired desiredShadows and remove them
+		// find unrequired desiredShadows and remove them
 		allDeployments, err := c.findCurrentShadows(deployment)
 		if err != nil {
 			return err
@@ -103,7 +110,7 @@ func (c *Controller) reconcileRoot(ctx context.Context, deployment *appsv1.Deplo
 }
 
 func (c *Controller) reconcileRootDelete(ctx context.Context, deployment *appsv1.Deployment) error {
-	//find and delete shadows
+	// find and delete shadows
 	shadows, err := c.findCurrentShadows(deployment)
 	if err != nil {
 		return err
@@ -119,14 +126,14 @@ func (c *Controller) reconcileRootDelete(ctx context.Context, deployment *appsv1
 			return err
 		}
 	}
-	//remove finalizers
+	// remove finalizers
 	metadata.RemoveFinalizer(deployment, shadowCleanupFinalizer)
 
 	return nil
 }
 
 func (c *Controller) reconcileShadowDelete(_ context.Context, deployment *appsv1.Deployment) error {
-	//honour deleteDelay finalizer
+	// honour deleteDelay finalizer
 	if !deleteDelay.CanDelete(deployment) {
 		if err := deleteDelay.Requeue(deployment, c.queue); err != nil {
 			return err
@@ -143,7 +150,7 @@ func generateShadowDeployments(locations []string, rootDeployment *appsv1.Deploy
 	for _, location := range locations {
 
 		desired := rootDeployment.DeepCopy()
-		//clean up desired objects meta data
+		// clean up desired objects meta data
 		delete(desired.Annotations, PlacementAnnotationName)
 		desired.Finalizers = []string{}
 		desired.SetResourceVersion("")
@@ -166,7 +173,7 @@ func IsShadowDeployment(deployment *appsv1.Deployment) bool {
 	return ok
 }
 
-//find any services that select the provided deployment
+// find any services that select the provided deployment
 func (c *Controller) findRootServices(deployment *appsv1.Deployment) ([]*corev1.Service, error) {
 	var retServices []*corev1.Service
 

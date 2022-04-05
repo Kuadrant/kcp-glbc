@@ -3,13 +3,16 @@ package service
 import (
 	"context"
 	"fmt"
-	"github.com/kuadrant/kcp-glbc/pkg/util/deleteDelay"
-	"github.com/kuadrant/kcp-glbc/pkg/util/metadata"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"strings"
+
+	"github.com/kuadrant/kcp-glbc/pkg/util/deleteDelay"
+	"github.com/kuadrant/kcp-glbc/pkg/util/metadata"
 )
 
 const (
@@ -23,7 +26,7 @@ const (
 )
 
 func (c *Controller) reconcile(ctx context.Context, service *corev1.Service) error {
-	//route the service to the correct handler function
+	// route the service to the correct handler function
 	_, isShadow := GetLocations(service)
 
 	if service.DeletionTimestamp != nil {
@@ -42,17 +45,21 @@ func (c *Controller) reconcile(ctx context.Context, service *corev1.Service) err
 
 func (c *Controller) ReconcileRootService(ctx context.Context, service *corev1.Service) error {
 	klog.Infof("reconciling root service: %v", service.Name)
-	//create or update shadow services
+	// create or update shadow services
 	shadowCopies, err := desiredServices(service)
 	if err != nil {
 		return err
 	}
 
 	metadata.AddFinalizer(service, shadowCleanupFinalizer)
-	//create or update desired shadows
+	// create or update desired shadows
 	for _, shadow := range shadowCopies {
 		klog.Infof("creating shadow service %v", shadow.Name)
-		obj, exists, err := c.indexer.Get(shadow)
+		key, err := cache.MetaNamespaceKeyFunc(shadow)
+		if err != nil {
+			return err
+		}
+		obj, exists, err := c.indexer.GetByKey(key)
 		if err != nil {
 			return err
 		}
@@ -72,7 +79,7 @@ func (c *Controller) ReconcileRootService(ctx context.Context, service *corev1.S
 		}
 	}
 
-	//find and remove undesired shadows
+	// find and remove undesired shadows
 	current, err := c.findCurrentShadows(service)
 	if err != nil {
 		return err
@@ -102,7 +109,7 @@ func (c *Controller) ReconcileRootService(ctx context.Context, service *corev1.S
 
 func (c *Controller) reconcileRootDelete(ctx context.Context, service *corev1.Service) error {
 	klog.Infof("reconciling deleting root service: %v", service.Name)
-	//delete undesired services
+	// delete undesired services
 	current, err := c.findCurrentShadows(service)
 	if err != nil {
 		return err
@@ -155,7 +162,7 @@ func desiredServices(service *corev1.Service) ([]*corev1.Service, error) {
 	for _, loc := range locations {
 		desired := service.DeepCopy()
 
-		//clean up clone
+		// clean up clone
 		delete(desired.Annotations, PlacementAnnotationName)
 		desired.Finalizers = []string{}
 		desired.SetResourceVersion("")
