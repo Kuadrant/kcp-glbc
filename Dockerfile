@@ -22,4 +22,4 @@ WORKDIR /
 COPY --from=builder workspace/bin/* /
 USER 65532:65532
 
-ENTRYPOINT ["/ingress-controller"]
+ENTRYPOINT ["/kcp-glbc"]

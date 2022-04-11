@@ -2,8 +2,6 @@
 
 ![build status badge](https://github.com/kuadrant/kcp-glbc/actions/workflows/ci.yaml/badge.svg)
 
-PoC related to <https://github.com/kcp-dev/kcp/issues/75>
-
 ## Getting Started
 
 Clone the repo and run:
@@ -22,7 +20,7 @@ This script will:
 Once the script is done, open a new terminal, and from the root of the project, you should start the ingress controller:
 
 ```bash
-./bin/ingress-controller --kubeconfig .kcp/admin.kubeconfig --glbc-kubeconfig ./tmp/kcp-cluster-glbc-control.kubeconfig
+./bin/kcp-glbc --kubeconfig .kcp/admin.kubeconfig --glbc-kubeconfig ./tmp/kcp-cluster-glbc-control.kubeconfig
 ```
 
 Now you can create a new ingress resource from the root of the project:
@@ -82,7 +80,7 @@ The e2e tests can be executed locally by running the following commands:
 # Start KCP and the KinD clusters
 $ make local-setup
 # Start KCP GLBC
-$ ./bin/ingress-controller --kubeconfig .kcp/admin.kubeconfig --context admin --dns-provider fake --glbc-kubeconfig tmp/kcp-cluster-glbc-control.kubeconfig
+$ ./bin/kcp-glbc --kubeconfig .kcp/admin.kubeconfig --context admin --dns-provider fake --glbc-kubeconfig tmp/kcp-cluster-glbc-control.kubeconfig
 # Run the e2e test suite
 $ make e2e
 ```

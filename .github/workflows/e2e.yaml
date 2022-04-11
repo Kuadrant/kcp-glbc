@@ -142,7 +142,7 @@ jobs:
           GLBC_LOG_FILE="${TEMP_DIR}"/glbc.log
           echo "GLBC_LOG_FILE=${GLBC_LOG_FILE}" >> $GITHUB_ENV
           echo "Starting GLBC, sending logs to ${GLBC_LOG_FILE}"
-          ./bin/ingress-controller --kubeconfig .kcp/admin.kubeconfig --context system:admin --glbc-kubeconfig "${HOME}"/.kube/config --dns-provider fake > ${GLBC_LOG_FILE} 2>&1 &
+          ./bin/kcp-glbc --kubeconfig .kcp/admin.kubeconfig --context system:admin --glbc-kubeconfig "${HOME}"/.kube/config --dns-provider fake > ${GLBC_LOG_FILE} 2>&1 &
           GLBC_PID=$!
           echo "GLBC_PID=${GLBC_PID}" >> $GITHUB_ENV
 

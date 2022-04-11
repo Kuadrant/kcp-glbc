@@ -22,7 +22,7 @@ spec:
         runAsNonRoot: true
       containers:
         - command:
-            - /ingress-controller
+            - /kcp-glbc
           args:
             - --kubeconfig=/tmp/kcp/kubeconfig
             - --glbc-kubeconfig=/tmp/glbc/kubeconfig
