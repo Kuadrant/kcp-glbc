@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/rs/xid"
+
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -47,7 +48,7 @@ func (c *Controller) reconcile(ctx context.Context, ingress *networkingv1.Ingres
 
 		metadata.RemoveFinalizer(ingress, cascadeCleanupFinalizer)
 
-		c.hostsWatcher.StopWatching(ingressKey(ingress))
+		c.hostsWatcher.StopWatching(ingressKey(ingress), "")
 
 		return nil
 	}
@@ -123,7 +124,6 @@ func (c *Controller) ensureCertificate(ctx context.Context, rootIngress *network
 }
 
 func (c *Controller) ensureDNS(ctx context.Context, ingress *networkingv1.Ingress) error {
-
 	if ingress.DeletionTimestamp != nil && !ingress.DeletionTimestamp.IsZero() {
 		// delete DNSRecord
 		err := c.dnsRecordClient.Cluster(logicalcluster.From(ingress)).KuadrantV1().DNSRecords(ingress.Namespace).Delete(ctx, ingress.Name, metav1.DeleteOptions{})
@@ -134,19 +134,20 @@ func (c *Controller) ensureDNS(ctx context.Context, ingress *networkingv1.Ingres
 	}
 
 	if len(ingress.Status.LoadBalancer.Ingress) > 0 {
+		key := ingressKey(ingress)
 		var activeHosts []string
 		// Start watching for address changes in the LBs hostnames
 		for _, lbs := range ingress.Status.LoadBalancer.Ingress {
 			if lbs.Hostname != "" {
-				c.hostsWatcher.StartWatching(ctx, ingressKey(ingress), lbs.Hostname)
+				c.hostsWatcher.StartWatching(ctx, key, lbs.Hostname)
 				activeHosts = append(activeHosts, lbs.Hostname)
 			}
 		}
 
-		hostRecordWatchers := c.hostsWatcher.ListHostRecordWatchers(ingressKey(ingress))
+		hostRecordWatchers := c.hostsWatcher.ListHostRecordWatchers(key)
 		for _, watcher := range hostRecordWatchers {
 			if !slice.ContainsString(activeHosts, watcher.Host) {
-				watcher.Stop()
+				c.hostsWatcher.StopWatching(key, watcher.Host)
 			}
 		}
 
@@ -265,7 +266,7 @@ func (c *Controller) setEndpointsFromIngress(ctx context.Context, ingress *netwo
 	return nil
 }
 
-//targetsFromIngressStatus returns a map of all the IPs associated with a single ingress(cluster)
+// targetsFromIngressStatus returns a map of all the IPs associated with a single ingress(cluster)
 func (c *Controller) targetsFromIngressStatus(ctx context.Context, status networkingv1.IngressStatus) (map[string][]string, error) {
 	var targets = make(map[string][]string, len(status.LoadBalancer.Ingress))
 
