@@ -1,8 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
+	"sync"
 	"time"
+
+	// Make sure our workqueue MetricsProvider is the first to register
+	_ "github.com/kuadrant/kcp-glbc/pkg/reconciler"
+
+	"golang.org/x/sync/errgroup"
 
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/client-go/informers"
@@ -16,6 +23,7 @@ import (
 
 	kuadrantv1 "github.com/kuadrant/kcp-glbc/pkg/client/kuadrant/clientset/versioned"
 	"github.com/kuadrant/kcp-glbc/pkg/client/kuadrant/informers/externalversions"
+	"github.com/kuadrant/kcp-glbc/pkg/metrics"
 	"github.com/kuadrant/kcp-glbc/pkg/net"
 	"github.com/kuadrant/kcp-glbc/pkg/reconciler/deployment"
 	"github.com/kuadrant/kcp-glbc/pkg/reconciler/dns"
@@ -23,8 +31,7 @@ import (
 	"github.com/kuadrant/kcp-glbc/pkg/reconciler/service"
 	tlsreconciler "github.com/kuadrant/kcp-glbc/pkg/reconciler/tls"
 	"github.com/kuadrant/kcp-glbc/pkg/tls"
-	"github.com/kuadrant/kcp-glbc/pkg/tls/certmanager"
-	"github.com/kuadrant/kcp-glbc/pkg/util/os"
+	"github.com/kuadrant/kcp-glbc/pkg/util/env"
 )
 
 const (
@@ -32,18 +39,27 @@ const (
 	resyncPeriod = 10 * time.Hour
 )
 
-var kubeconfig = flag.String("kubeconfig", "", "Path to kubeconfig")
-var logicalClusterTarget = flag.String("logical-cluster", os.GetEnvString("GLBC_LOGICAL_CLUSTER_TARGET", "*"), "set the target logical cluster")
-var glbcKubeconfig = flag.String("glbc-kubeconfig", "", "Path to GLBC kubeconfig")
-var tlsProviderEnabled = flag.Bool("glbc-tls-provided", os.GetEnvBool("GLBC_TLS_PROVIDED", false), "when set to true glbc will generate LE certs for hosts it creates")
-var tlsProvider = flag.String("glbc-tls-provider", os.GetEnvString("GLBC_TLS_PROVIDER", "le-staging"), "decides which provider to use. Current allowed values -glbc-tls-provider=le-staging -glbc-tls-provider=le-production ")
-var region = flag.String("region", os.GetEnvString("AWS_REGION", "eu-central-1"), "the region we should target with AWS clients")
-var kubecontext = flag.String("context", os.GetEnvString("GLBC_KCP_CONTEXT", ""), "Context to use in the Kubeconfig file, instead of the current context")
+var (
+	// Control cluster client options
+	glbcKubeconfig = flag.String("glbc-kubeconfig", "", "Path to GLBC kubeconfig")
+	// KCP client options
+	kubeconfig           = flag.String("kubeconfig", "", "Path to kubeconfig")
+	kubecontext          = flag.String("context", env.GetEnvString("GLBC_KCP_CONTEXT", ""), "Context to use in the Kubeconfig file, instead of the current context")
+	logicalClusterTarget = flag.String("logical-cluster", env.GetEnvString("GLBC_LOGICAL_CLUSTER_TARGET", "*"), "set the target logical cluster")
+	// TLS certificate issuance options
+	tlsProviderEnabled = flag.Bool("glbc-tls-provided", env.GetEnvBool("GLBC_TLS_PROVIDED", false), "when set to true glbc will generate LE certs for hosts it creates")
+	tlsProvider        = flag.String("glbc-tls-provider", env.GetEnvString("GLBC_TLS_PROVIDER", "le-staging"), "decides which provider to use. Current allowed values -glbc-tls-provider=le-staging -glbc-tls-provider=le-production ")
+	// DNS management options
+	domain            = flag.String("domain", env.GetEnvString("GLBC_DOMAIN", "hcpapps.net"), "The domain to use to expose ingresses")
+	enableCustomHosts = flag.Bool("enable-custom-hosts", env.GetEnvBool("GLBC_ENABLE_CUSTOM_HOSTS", false), "Flag to enable hosts to be custom")
+	dnsProvider       = flag.String("dns-provider", env.GetEnvString("GLBC_DNS_PROVIDER", "aws"), "The DNS provider being used [aws, fake]")
+	// AWS Route53 options
+	region = flag.String("region", env.GetEnvString("AWS_REGION", "eu-central-1"), "the region we should target with AWS clients")
+	// Observability options
+	monitoringPort = flag.Int("monitoring-port", 8080, "The port of the metrics endpoint (can be set to \"0\" to disable the metrics serving)")
+)
 
-var domain = flag.String("domain", os.GetEnvString("GLBC_DOMAIN", "hcpapps.net"), "The domain to use to expose ingresses")
-var enableCustomHosts = flag.Bool("enable-custom-hosts", os.GetEnvBool("GLBC_ENABLE_CUSTOM_HOSTS", false), "Flag to enable hosts to be custom")
-
-var dnsProvider = flag.String("dns-provider", os.GetEnvString("GLBC_DNS_PROVIDER", "aws"), "The DNS provider being used [aws, fake]")
+var controllersGroup = sync.WaitGroup{}
 
 func main() {
 	klog.InitFlags(nil)
@@ -87,29 +103,30 @@ func main() {
 	if err != nil {
 		klog.Fatal(err)
 	}
-	tlsCertProvider := certmanager.CertProviderLEStaging
+	tlsCertProvider := tls.CertProviderLEStaging
 	if *tlsProvider == "le-production" {
-		tlsCertProvider = certmanager.CertProviderLEProd
+		tlsCertProvider = tls.CertProviderLEProd
 	}
 	klog.Info("using tls cert provider ", tlsCertProvider, *tlsProvider)
 
 	// certman client targets the control cluster, this is the same cluster as glbc is deployed to
 	certClient := certmanclient.NewForConfigOrDie(gr)
-	certConfig := certmanager.CertManagerConfig{
-		DNSValidator: certmanager.DNSValidatorRoute53,
+	certConfig := tls.CertManagerConfig{
+		DNSValidator: tls.DNSValidatorRoute53,
 		CertClient:   certClient,
 		CertProvider: tlsCertProvider,
 		Region:       *region,
 		K8sClient:    glbcTypedClient,
-		ValidDomans:  []string{*domain},
+		ValidDomains: []string{*domain},
 	}
 	var certProvider tls.Provider = &tls.FakeProvider{}
 	if *tlsProviderEnabled {
-		certProvider, err = certmanager.NewCertManager(certConfig)
+		certProvider, err = tls.NewCertManager(certConfig)
 		if err != nil {
 			klog.Fatal(err)
 		}
 	}
+	tlsreconciler.InitMetrics(certProvider)
 
 	// ensure Issuer Is Setup at start up time
 	// TODO consider extracting out the setup to CRD
@@ -177,25 +194,41 @@ func main() {
 	glbcFilteredInformerFactory.Start(ctx.Done())
 	glbcFilteredInformerFactory.WaitForCacheSync(ctx.Done())
 
-	go func() {
-		ingressController.Start(ctx, numThreads)
-	}()
+	// start listening on the metrics endpoint
+	metricsServer, err := metrics.NewServer(monitoringPort)
+	if err != nil {
+		klog.Exitf("Failed to create metrics server: %v", err)
+	}
 
-	go func() {
-		dnsRecordController.Start(ctx, numThreads)
-	}()
+	g, gCtx := errgroup.WithContext(ctx)
 
-	go func() {
-		tlsController.Start(ctx, numThreads)
-	}()
+	g.Go(metricsServer.Start)
 
-	go func() {
-		serviceController.Start(ctx, numThreads)
-	}()
+	start(gCtx, ingressController)
+	start(gCtx, dnsRecordController)
+	start(gCtx, tlsController)
+	start(gCtx, serviceController)
+	start(gCtx, deploymentController)
 
-	go func() {
-		deploymentController.Start(ctx, numThreads)
-	}()
+	g.Go(func() error {
+		// wait until the controllers have return before stopping serving metrics
+		controllersGroup.Wait()
+		return metricsServer.Shutdown()
+	})
 
-	<-ctx.Done()
+	if err := g.Wait(); err != nil {
+		klog.Exitf("Exiting due to error: %v", err)
+	}
+}
+
+type Controller interface {
+	Start(context.Context, int)
+}
+
+func start(ctx context.Context, runnable Controller) {
+	controllersGroup.Add(1)
+	go func() {
+		defer controllersGroup.Done()
+		runnable.Start(ctx, numThreads)
+	}()
 }

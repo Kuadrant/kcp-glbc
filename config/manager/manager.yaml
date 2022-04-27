@@ -3,11 +3,13 @@ kind: Deployment
 metadata:
   name: kcp-glbc-controller-manager
   labels:
-    control-plane: controller-manager
+    app.kubernetes.io/name: kcp-glbc
+    app.kubernetes.io/component: controller-manager
 spec:
   selector:
     matchLabels:
-      control-plane: controller-manager
+      app.kubernetes.io/name: kcp-glbc
+      app.kubernetes.io/component: controller-manager
   replicas: 1
   strategy:
     type: Recreate
@@ -16,7 +18,8 @@ spec:
       annotations:
         kubectl.kubernetes.io/default-container: manager
       labels:
-        control-plane: controller-manager
+        app.kubernetes.io/name: kcp-glbc
+        app.kubernetes.io/component: controller-manager
     spec:
       securityContext:
         runAsNonRoot: true
@@ -37,6 +40,10 @@ spec:
             - configMapRef:
                 name: controller-config
                 optional: true
+          ports:
+            - name: metrics
+              containerPort: 8080
+              protocol: TCP
           resources:
             limits:
               cpu: 500m

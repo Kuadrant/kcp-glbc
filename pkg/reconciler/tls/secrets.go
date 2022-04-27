@@ -11,18 +11,19 @@ import (
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 
 	"github.com/kuadrant/kcp-glbc/pkg/cluster"
+	"github.com/kuadrant/kcp-glbc/pkg/tls"
 )
 
 const (
 	secretsFinalizer   = "kcp.dev/cascade-cleanup"
-	tlsreadyAnnotation = "kuadrant.dev/tls.enabled"
+	tlsReadyAnnotation = "kuadrant.dev/tls.enabled"
 )
 
 // this controller watches the control cluster and mirrors cert secrets into the KCP cluster
 func (c *Controller) reconcile(ctx context.Context, secret *v1.Secret) error {
 	// create our context to avoid repeatedly pulling out annotations etc
 	kcpCtx, err := cluster.NewKCPObjectMapper(secret)
-	// may be a better way to filter these out TODO look at label selector in the controller
+	// TODO: use label selector in the controller to filter Secrets out
 	if err != nil && cluster.IsNoContextErr(err) {
 		// ignore this secret
 		return nil
@@ -76,7 +77,6 @@ func AddFinalizer(secret *v1.Secret, finalizer string) {
 }
 
 func (c *Controller) ensureDelete(ctx context.Context, kctx cluster.ObjectMapper, secret *v1.Secret) error {
-	// delete the mirrored secret
 	if err := c.kcpClient.Cluster(logicalcluster.New(kctx.Workspace())).CoreV1().Secrets(kctx.Namespace()).Delete(ctx, kctx.Name(), metav1.DeleteOptions{}); err != nil && !k8errors.IsNotFound(err) {
 		return err
 	}
@@ -84,8 +84,6 @@ func (c *Controller) ensureDelete(ctx context.Context, kctx cluster.ObjectMapper
 }
 
 func (c *Controller) ensureMirrored(ctx context.Context, kctx cluster.ObjectMapper, secret *v1.Secret) error {
-	// create a mirrored secret
-
 	klog.Infof("mirroring %s tls secret to workspace %s namespace %s and secret %s ", kctx.Name(), kctx.Workspace(), kctx.Namespace(), kctx.Name())
 	mirror := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -97,12 +95,12 @@ func (c *Controller) ensureMirrored(ctx context.Context, kctx cluster.ObjectMapp
 		Type: secret.Type,
 	}
 	secretClient := c.kcpClient.Cluster(logicalcluster.New(kctx.Workspace())).CoreV1().Secrets(kctx.Namespace())
-	// using kcpClient here to target the kcp cluster
+	// using kcpClient here to target the KCP cluster
 	_, err := secretClient.Create(ctx, mirror, metav1.CreateOptions{})
-	if err != nil && !k8errors.IsAlreadyExists(err) {
-		return err
-	}
-	if err != nil && k8errors.IsAlreadyExists(err) {
+	if err != nil {
+		if !k8errors.IsAlreadyExists(err) {
+			return err
+		}
 		s, err := secretClient.Get(ctx, mirror.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
@@ -113,7 +111,7 @@ func (c *Controller) ensureMirrored(ctx context.Context, kctx cluster.ObjectMapp
 			return err
 		}
 	}
-	// find the ingress this secret is for and add an annotation to notify tls is ready and trigger reconcile
+	// find the Ingress this Secret is for and add an annotation to notify TLS certificate is ready and trigger reconcile
 	ingressClient := c.kcpClient.Cluster(logicalcluster.New(kctx.Workspace())).NetworkingV1().Ingresses(kctx.Namespace())
 	rootIngress, err := ingressClient.Get(ctx, kctx.OwnedBy(), metav1.GetOptions{})
 	if err != nil {
@@ -122,12 +120,27 @@ func (c *Controller) ensureMirrored(ctx context.Context, kctx cluster.ObjectMapp
 	if rootIngress.Annotations == nil {
 		rootIngress.Annotations = map[string]string{}
 	}
-	if _, ok := rootIngress.Annotations[tlsreadyAnnotation]; !ok {
-		rootIngress.Annotations[tlsreadyAnnotation] = "true"
+	if _, ok := rootIngress.Annotations[tlsReadyAnnotation]; !ok {
+		rootIngress.Annotations[tlsReadyAnnotation] = "true"
 		if _, err := ingressClient.Update(ctx, rootIngress, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
+		c.observeCertificateIssuanceDuration(kctx, secret)
 	}
 
 	return nil
+}
+
+func (c *Controller) observeCertificateIssuanceDuration(kctx cluster.ObjectMapper, secret *v1.Secret) {
+	// FIXME: refactor the certificate management so that metrics reflect actual state transitions rather than client requests, and so that it's possible to observe issuance errors
+	issuer := secret.Annotations[tlsIssuerAnnotation]
+	hostname := kctx.Host()
+	// The certificate request has successfully completed
+	tlsCertificateRequestTotal.WithLabelValues(issuer, hostname, resultLabelSucceeded).Inc()
+	// The certificate request has successfully completed so there is one less pending request
+	tls.CertificateRequestCount.WithLabelValues(issuer, hostname).Dec()
+
+	tlsCertificateIssuanceDuration.
+		WithLabelValues(issuer, hostname, resultLabelSucceeded).
+		Observe(secret.CreationTimestamp.Sub(kctx.CreationTimestamp().Time).Seconds())
 }

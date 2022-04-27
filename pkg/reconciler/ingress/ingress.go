@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/rs/xid"
-
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -18,6 +18,7 @@ import (
 	"k8s.io/utils/pointer"
 
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+
 	v1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
 	"github.com/kuadrant/kcp-glbc/pkg/cluster"
 	"github.com/kuadrant/kcp-glbc/pkg/dns/aws"
@@ -92,9 +93,10 @@ func (c *Controller) reconcile(ctx context.Context, ingress *networkingv1.Ingres
 // ensureCertificate creates a certificate request for the root ingress into the control cluster
 func (c *Controller) ensureCertificate(ctx context.Context, rootIngress *networkingv1.Ingress) error {
 	if !c.tlsEnabled {
-		klog.Info("tls support not enabled. not creating certificates")
+		klog.Info("TLS support is not enabled, skipping certificate request")
 		return nil
 	}
+
 	controlClusterContext, err := cluster.NewControlObjectMapper(rootIngress)
 	if err != nil {
 		return err
@@ -236,45 +238,49 @@ func (c *Controller) setEndpointsFromIngress(ctx context.Context, ingress *netwo
 
 	newEndpoints := make([]*v1.Endpoint, len(targets))
 
-	for i, target := range targets {
-		var endpoint *v1.Endpoint
-		ok := false
+	for _, ingressTargets := range targets {
+		for i, target := range ingressTargets {
+			var endpoint *v1.Endpoint
+			ok := false
 
-		// If the endpoint for this target does not exist, add a new one
-		if endpoint, ok = currentEndpoints[target]; !ok {
-			endpoint = &v1.Endpoint{
-				SetIdentifier: target,
+			// If the endpoint for this target does not exist, add a new one
+			if endpoint, ok = currentEndpoints[target]; !ok {
+				endpoint = &v1.Endpoint{
+					SetIdentifier: target,
+				}
 			}
+
+			newEndpoints[i] = endpoint
+
+			// Update the endpoint fields
+			endpoint.DNSName = hostname
+			endpoint.RecordType = "A"
+			endpoint.Targets = []string{target}
+			endpoint.RecordTTL = 60
+			endpoint.SetProviderSpecific(aws.ProviderSpecificWeight, awsEndpointWeight(len(ingressTargets)))
 		}
-
-		newEndpoints[i] = endpoint
-
-		// Update the endpoint fields
-		endpoint.DNSName = hostname
-		endpoint.RecordType = "A"
-		endpoint.Targets = []string{target}
-		endpoint.RecordTTL = 60
-		endpoint.SetProviderSpecific(aws.ProviderSpecificWeight, "100")
 	}
 
 	dnsRecord.Spec.Endpoints = newEndpoints
 	return nil
 }
 
-func (c *Controller) targetsFromIngressStatus(ctx context.Context, status networkingv1.IngressStatus) ([]string, error) {
-	var targets []string
+//targetsFromIngressStatus returns a map of all the IPs associated with a single ingress(cluster)
+func (c *Controller) targetsFromIngressStatus(ctx context.Context, status networkingv1.IngressStatus) (map[string][]string, error) {
+	var targets = make(map[string][]string, len(status.LoadBalancer.Ingress))
 
 	for _, lb := range status.LoadBalancer.Ingress {
 		if lb.IP != "" {
-			targets = append(targets, lb.IP)
+			targets[lb.IP] = []string{lb.IP}
 		}
 		if lb.Hostname != "" {
 			ips, err := c.hostResolver.LookupIPAddr(ctx, lb.Hostname)
 			if err != nil {
 				return nil, err
 			}
+			targets[lb.Hostname] = []string{}
 			for _, ip := range ips {
-				targets = append(targets, ip.IP.String())
+				targets[lb.Hostname] = append(targets[lb.Hostname], ip.IP.String())
 			}
 		}
 	}
@@ -368,4 +374,21 @@ func removeHostsFromTLS(hostsToRemove []string, ingress *networkingv1.Ingress) {
 			}
 		}
 	}
+}
+
+// awsEndpointWeight returns the weight value for a single AWS record in a set of records where the traffic is split
+// evenly between a number of clusters/ingresses, each splitting traffic evenly to a number of IPs (numIPs)
+//
+// Divides the number of IPs by a known weight allowance for a cluster/ingress, note that this means:
+// * Will always return 1 after a certain number of ips is reached, 60 in the current case (maxWeight / 2)
+// * Will return values that don't add up to the total maxWeight when the number of ingresses is not divisible by numIPs
+//
+// The aws weight value must be an integer between 0 and 255.
+// https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/resource-record-sets-values-weighted.html#rrsets-values-weighted-weight
+func awsEndpointWeight(numIPs int) string {
+	maxWeight := 120
+	if numIPs > maxWeight {
+		numIPs = maxWeight
+	}
+	return strconv.Itoa(maxWeight / numIPs)
 }

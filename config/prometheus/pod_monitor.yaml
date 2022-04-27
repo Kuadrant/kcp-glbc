@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: kcp-glbc-controller-manager
+  labels:
+    app.kubernetes.io/name: kcp-glbc
+    app.kubernetes.io/component: controller-manager
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kcp-glbc
+      app.kubernetes.io/component: controller-manager
+  podMetricsEndpoints:
+    - port: metrics

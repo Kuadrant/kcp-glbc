@@ -1,0 +1,471 @@
+[[monitoring]]
+= KCP GLBC Monitoring
+
+The KCP GLBC monitoring architecture relies on https://prometheus.io[Prometheus] and the eponymous operator.
+
+The https://prometheus-operator.dev[Prometheus operator] serves to make running Prometheus on top of Kubernetes as easy as possible, while preserving Kubernetes-native configuration options.
+
+[[prerequisites]]
+== Prerequisites
+
+To take full advantage of the KCP GLBC monitoring capabilities, it is recommended to have a Prometheus operator instance, that can be configured to integrate with the KCP GLBC instance deployed on the same cluster.
+
+[[kubernetes]]
+=== Kubernetes
+
+The easiest way to get started with the Prometheus operator is by deploying it as part of https://github.com/prometheus-operator/kube-prometheus[kube-prometheus], which provisions an entire monitoring stack.
+You can follow the https://prometheus-operator.dev/docs/prologue/quick-start/[quickstart] from the Prometheus operator https://prometheus-operator.dev/[documentation].
+
+Alternatively, you can quickly deploy the Prometheus operator by running:
+
+[source,console]
+----
+$ kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/bundle.yaml
+----
+
+WARNING: Beware this installs the operator in the `default` namespace. You must download the file locally and replace the `namespace` fields to deploy the resources into another namespace. This also installs the version from the `main` branch, which you can change in the URL by choosing a stable release version.
+
+Then, you can create a Prometheus resource, that the operator will use as configuration to deploy a managed Prometheus instance:
+
+[source,console]
+----
+$ cat <<EOF | kubectl apply -f -
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: prometheus
+spec:
+  podMonitorSelector:
+    matchLabels:
+      app.kubernetes.io/name: kcp-glbc
+EOF
+----
+
+By default, the Prometheus instance discovers applications to be monitored in the same namespace.
+You can use the `podMonitorNamespaceSelector` field from the Prometheus resource to enable cross-namespace monitoring.
+You may also need to specify a ServiceAccount with the `serviceAccountName` field, that's bound to a Role with the necessary permissions.
+
+[[openshift]]
+=== OpenShift
+
+Starting OpenShift 4.3, the Prometheus Operator, that's already deployed as part of the monitoring stack, can be used to https://docs.openshift.com/container-platform/4.3/monitoring/monitoring-your-own-services.html[monitor application services].
+This needs to be enabled by following these instructions:
+
+. Check whether the `cluster-monitoring-config` ConfigMap object exists in the `openshift-monitoring` project:
+
+  $ oc -n openshift-monitoring edit configmap cluster-monitoring-config
+
+. If it does not exist, create it:
+
+  $ oc -n openshift-monitoring create configmap cluster-monitoring-config
+
+. Start editing the `cluster-monitoring-config` ConfigMap:
+
+  $ oc -n openshift-monitoring edit configmap cluster-monitoring-config
+
+. Set the `enableUserWorkload` setting to `true` under `data/config.yaml`:
++
+[source,yaml]
+----
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+data:
+  config.yaml: |
+    enableUserWorkload: true
+----
+Note that, in OpenShift versions from 4.3 to 4.5, the configuration is as following:
++
+[source,yaml]
+----
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+data:
+  config.yaml: |
+    techPreviewUserWorkload:
+      enabled: true
+----
+
+On OpenShift versions prior to 4.3, or if you do not want to change your cluster monitoring stack configuration, you can refer to the <<Kubernetes>> section in order to deploy a separate Prometheus operator instance.
+
+[[discovery]]
+== Discovery
+
+A PodMonitor resource must be created in the same namespace as the `kcp-glbc-controller-manager` Deployment, for the Prometheus operator to reconcile, so that the managed Prometheus instance can scrape the _metrics_ endpoint.
+
+As an example, hereafter is the PodMonitor resource that is created when executing the `kustomize build config/prometheus | kubectl apply -f -` command:
+
+.pod_monitor.yaml
+[source,yaml]
+----
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: kcp-glbc-controller-manager
+  labels: # <1>
+    app.kubernetes.io/name: kcp-glbc
+    app.kubernetes.io/component: controller-manager
+spec:
+  selector:
+    matchLabels: # <2>
+      app.kubernetes.io/name: kcp-glbc
+      app.kubernetes.io/component: controller-manager
+  podMetricsEndpoints:
+    - port: metrics
+----
+<1> The labels must match the `podMonitorSelector` field from the Prometheus resource
+<2> This label selector matches the `kcp-glbc-controller-manager` Deployment Pod template labels
+
+The Prometheus operator https://github.com/prometheus-operator/prometheus-operator/blob/v0.56.0/Documentation/user-guides/getting-started.md#related-resources[getting started] guide documents the discovery mechanism, as well as the relationship between the operator resources.
+
+In case the metrics are not discovered, you may want to rely on https://github.com/prometheus-operator/prometheus-operator/blob/v0.56.0/Documentation/troubleshooting.md#troubleshooting-servicemonitor-changes[Troubleshooting ServiceMonitor changes], which also applies to PodMonitor resources troubleshooting.
+
+[[metrics]]
+== Metrics
+
+By default, KCP GLBC serves a `/metrics` HTTP endpoint on port `8080`.
+This can be changed with the `--monitoring-port` option, e.g.:
+
+[source,console]
+----
+$ kcp-glbc --monitoring-port=8888
+----
+
+The metrics can then be retrieved by _GETTing_ the `/metrics` endpoint, e.g.:
+
+[source,console]
+----
+$ curl http://localhost:8888/metrics | grep "glbc_tls"
+# HELP glbc_tls_certificate_issuance_duration_seconds GLBC TLS certificate issuance duration
+# TYPE glbc_tls_certificate_issuance_duration_seconds histogram
+glbc_tls_certificate_issuance_duration_seconds_bucket{issuer="",result="succeeded",le="1"} 0
+glbc_tls_certificate_issuance_duration_seconds_bucket{issuer="",result="succeeded",le="5"} 0
+glbc_tls_certificate_issuance_duration_seconds_bucket{issuer="",result="succeeded",le="10"} 0
+glbc_tls_certificate_issuance_duration_seconds_bucket{issuer="",result="succeeded",le="15"} 0
+glbc_tls_certificate_issuance_duration_seconds_bucket{issuer="",result="succeeded",le="30"} 0
+glbc_tls_certificate_issuance_duration_seconds_bucket{issuer="",result="succeeded",le="45"} 0
+glbc_tls_certificate_issuance_duration_seconds_bucket{issuer="",result="succeeded",le="60"} 0
+glbc_tls_certificate_issuance_duration_seconds_bucket{issuer="",result="succeeded",le="120"} 1
+glbc_tls_certificate_issuance_duration_seconds_bucket{issuer="",result="succeeded",le="300"} 1
+glbc_tls_certificate_issuance_duration_seconds_bucket{issuer="",result="succeeded",le="+Inf"} 1
+glbc_tls_certificate_issuance_duration_seconds_sum{issuer="",result="succeeded"} 93
+glbc_tls_certificate_issuance_duration_seconds_count{issuer="",result="succeeded"} 1
+# HELP glbc_tls_certificate_pending_request_count GLBC TLS certificate pending request count
+# TYPE glbc_tls_certificate_pending_request_count gauge
+glbc_tls_certificate_pending_request_count{issuer="letsencryptstaging"} 0
+# HELP glbc_tls_certificate_request_errors_total GLBC TLS certificate total number of request errors
+# TYPE glbc_tls_certificate_request_errors_total counter
+glbc_tls_certificate_request_errors_total{issuer="letsencryptstaging"} 0
+# HELP glbc_tls_certificate_request_total GLBC TLS certificate total number of requests
+# TYPE glbc_tls_certificate_request_total counter
+glbc_tls_certificate_request_total{issuer="letsencryptstaging",result="failed"} 0
+glbc_tls_certificate_request_total{issuer="letsencryptstaging",result="succeeded"} 1
+# HELP glbc_tls_certificate_secret_count GLBC TLS certificate secret count
+# TYPE glbc_tls_certificate_secret_count gauge
+glbc_tls_certificate_secret_count{issuer="letsencryptstaging"} 1
+----
+
+The serving of the metrics endpoint can be disabled by setting this option to `0`, e.g.:
+
+[source,console]
+----
+$ kcp-glbc --monitoring-port=0
+----
+
+The KCP GLBC monitoring endpoint exposes the metrics listed in the following sections.
+
+=== AWS Route53 metrics
+
+.AWS Route53 metrics
+|===
+|Name |Type |Description |Labels
+
+| `glbc_aws_route53_inflight_request_count`
+| `GaugeVec`
+| Current number of inflight requests to Route53
+| `operation`
+
+| `glbc_aws_route53_request_total`
+| `CounterVec`
+| Total number of requests to Route53
+| `operation`, `code`
+
+| `glbc_aws_route53_request_errors_total`
+| `CounterVec`
+| Total number of failed requests to Route53
+| `operation`, `code`
+
+| `glbc_aws_route53_request_duration_seconds`
+| `HistogramVec`
+| Duration of requests to Route53
+| `operation`, `code`
+
+|===
+
+=== TLS Certificate Metrics
+
+.TLS certificate metrics
+|===
+|Name |Type |Description |Labels
+
+| `glbc_tls_certificate_secret_count`
+| `GaugeVec`
+| Current number of TLS certificate Secrets
+| `issuer`, `hostname`
+
+| `glbc_tls_certificate_pending_request_count`
+| `GaugeVec`
+| Current number of pending certificate requests
+| `issuer`, `hostname`
+
+| `glbc_tls_certificate_request_total`
+| `CounterVec`
+| Total number of TLS certificate requests
+| `issuer`, `hostname`, `result`
+
+| `glbc_tls_certificate_request_errors_total`
+| `CounterVec`
+| Total number of failed TLS certificate requests
+| `issuer`, `hostname`
+
+| `glbc_tls_certificate_issuance_duration_seconds`
+| `HistogramVec`
+| Duration of the TLS certificate issuance
+| `issuer`, `hostname`, `result`
+
+|===
+
+=== Controller Metrics
+
+.Reconcilation metrics
+|===
+|Name |Type |Description |Labels
+
+| `glbc_controller_reconcile_total`
+| `CounterVec`
+| Total number of reconciliations per controller
+| `controller`, `result`
+
+| `glbc_controller_reconcile_errors_total`
+| `CounterVec`
+| Total number of reconciliation errors per controller
+| `controller`
+
+| `glbc_controller_reconcile_time_seconds`
+| `HistogramVec`
+| Length of time per reconciliation per controller
+| `controller`
+
+| `glbc_controller_max_concurrent_reconciles`
+| `GaugeVec`
+| Maximum number of concurrent reconciles per controller
+| `controller`
+
+| `glbc_controller_active_workers`
+| `GaugeVec`
+| Number of currently used workers per controller
+| `controller`
+
+|===
+
+.Workqueue metrics
+|===
+|Name |Type |Description |Labels
+
+| `workqueue_adds_total`
+| `CounterVec`
+| Total number of adds handled by workqueue
+| `name`
+
+| `workqueue_depth`
+| `CounterVec`
+| Current depth of workqueue
+| `name`
+
+| `workqueue_longest_running_processor_seconds`
+| `GaugeVec`
+| How many seconds has the longest running processor for workqueue been running
+| `name`
+
+| `workqueue_queue_duration_seconds`
+| `HistogramVec`
+| How long in seconds an item stays in workqueue before being requested
+| `name`
+
+| `workqueue_retries_total`
+| `CounterVec`
+| Total number of retries handled by workqueue
+| `name`
+
+| `workqueue_unfinished_work_seconds`
+| `GaugeVec`
+| How many seconds of work has been done that is in progress and hasn't been observed by work_duration. Large values indicate stuck threads. One can deduce the number of stuck threads by observing the rate at which this increases
+| `name`
+
+| `workqueue_work_duration_seconds`
+| `HistogramVec`
+| How long in seconds processing an item from workqueue takes
+| `name`
+
+|===
+
+=== Go Runtime Metrics
+
+.Go Runtime metrics
+|===
+|Name |Type |Description
+
+| `go_gc_duration_seconds`
+| `Summary`
+| A summary of the pause duration of garbage collection cycles
+
+| `go_goroutines`
+| `Gauge`
+| Number of goroutines that currently exist
+
+| `go_info`
+| `Gauge`
+| Information about the Go environment
+
+| `go_memstats_alloc_bytes`
+| `Gauge`
+| Number of bytes allocated and still in use
+
+| `go_memstats_alloc_bytes_total`
+| `Counter`
+| Total number of bytes allocated, even if freed
+
+| `go_memstats_buck_hash_sys_bytes`
+| `Gauge`
+| Number of bytes used by the profiling bucket hash table
+
+| `go_memstats_frees_total`
+| `Counter`
+| Total number of frees
+
+| `go_memstats_gc_cpu_fraction`
+| `Gauge`
+| The fraction of this program's available CPU time used by the GC since the program started
+
+| `go_memstats_gc_sys_bytes`
+| `Gauge`
+| Number of bytes used for garbage collection system metadata
+
+| `go_memstats_heap_alloc_bytes`
+| `Gauge`
+| Number of heap bytes allocated and still in use
+
+| `go_memstats_heap_idle_bytes`
+| `Gauge`
+| Number of heap bytes waiting to be used
+
+| `go_memstats_heap_inuse_bytes`
+| `Gauge`
+| Number of heap bytes that are in use
+
+| `go_memstats_heap_objects`
+| `Gauge`
+| Number of allocated objects
+
+| `go_memstats_heap_released_bytes`
+| `Gauge`
+| Number of heap bytes released to OS
+
+| `go_memstats_heap_sys_bytes`
+| `Gauge`
+| Number of heap bytes obtained from system
+
+| `go_memstats_last_gc_time_seconds`
+| `Gauge`
+| Number of seconds since 1970 of last garbage collection
+
+| `go_memstats_lookups_total`
+| `Counter`
+| Total number of pointer lookups
+
+| `go_memstats_mallocs_total`
+| `Counter`
+| Total number of mallocs
+
+| `go_memstats_mcache_inuse_bytes`
+| `Gauge`
+| Number of bytes in use by mcache structures
+
+| `go_memstats_mcache_sys_bytes`
+| `Gauge`
+| Number of bytes used for mcache structures obtained from system
+
+| `go_memstats_mspan_inuse_bytes`
+| `Gauge`
+| Number of bytes in use by mspan structures
+
+| `go_memstats_mspan_sys_bytes`
+| `Gauge`
+| Number of bytes used for mspan structures obtained from system
+
+| `go_memstats_next_gc_bytes`
+| `Gauge`
+| Number of heap bytes when next garbage collection will take place
+
+| `go_memstats_other_sys_bytes`
+| `Gauge`
+| Number of bytes used for other system allocations
+
+| `go_memstats_stack_inuse_bytes`
+| `Gauge`
+| Number of bytes in use by the stack allocator
+
+| `go_memstats_stack_sys_bytes`
+| `Gauge`
+| Number of bytes obtained from system for stack allocator
+
+| `go_memstats_sys_bytes`
+| `Gauge`
+| Number of bytes obtained from system
+
+| `go_threads`
+| `Gauge`
+| Number of OS threads created
+
+|===
+
+=== Process Metrics
+
+.Process metrics
+|===
+|Name |Type |Description
+
+| `process_cpu_seconds_total`
+| `Counter`
+| Total user and system CPU time spent in seconds
+
+| `process_open_fds`
+| `Gauge`
+| Number of open file descriptors
+
+| `process_max_fds`
+| `Gauge`
+| Maximum number of open file descriptors
+
+| `process_virtual_memory_bytes`
+| `Gauge`
+| Virtual memory size in bytes
+
+| `process_virtual_memory_max_bytes`
+| `Gauge`
+| Maximum amount of virtual memory available in bytes
+
+| `process_resident_memory_bytes`
+| `Gauge`
+| Resident memory size in bytes
+
+| `process_start_time_seconds`
+| `Gauge`
+| Start time of the process since unix epoch in seconds
+
+|===

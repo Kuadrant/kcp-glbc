@@ -21,12 +21,12 @@ var (
 )
 
 type Route53HealthCheckReconciler struct {
-	client *route53.Route53
+	client *InstrumentedRoute53
 }
 
 var _ dns.HealthCheckReconciler = &Route53HealthCheckReconciler{}
 
-func NewRoute53HealthCheckReconciler(client *route53.Route53) *Route53HealthCheckReconciler {
+func NewRoute53HealthCheckReconciler(client *InstrumentedRoute53) *Route53HealthCheckReconciler {
 	return &Route53HealthCheckReconciler{
 		client: client,
 	}
@@ -73,13 +73,13 @@ func (r *Route53HealthCheckReconciler) Delete(ctx context.Context, endpoint *v1.
 	return err
 }
 
-func (c *Route53HealthCheckReconciler) findHealthCheck(ctx context.Context, endpoint *v1.Endpoint) (*route53.HealthCheck, bool, error) {
+func (r *Route53HealthCheckReconciler) findHealthCheck(ctx context.Context, endpoint *v1.Endpoint) (*route53.HealthCheck, bool, error) {
 	id, hasId := getHealthCheckId(endpoint)
 	if !hasId {
 		return nil, false, nil
 	}
 
-	response, err := c.client.GetHealthCheckWithContext(ctx, &route53.GetHealthCheckInput{
+	response, err := r.client.GetHealthCheckWithContext(ctx, &route53.GetHealthCheckInput{
 		HealthCheckId: &id,
 	})
 	if err != nil {
@@ -90,15 +90,13 @@ func (c *Route53HealthCheckReconciler) findHealthCheck(ctx context.Context, endp
 
 }
 
-func (c *Route53HealthCheckReconciler) createHealthCheck(ctx context.Context, spec dns.HealthCheckSpec, endpoint *v1.Endpoint) (*route53.HealthCheck, error) {
+func (r *Route53HealthCheckReconciler) createHealthCheck(ctx context.Context, spec dns.HealthCheckSpec, endpoint *v1.Endpoint) (*route53.HealthCheck, error) {
 	address, _ := endpoint.GetAddress()
 	host := endpoint.DNSName
 
 	// Create the health check
-	output, err := c.client.CreateHealthCheck(&route53.CreateHealthCheckInput{
-
+	output, err := r.client.CreateHealthCheck(&route53.CreateHealthCheckInput{
 		CallerReference: callerReference(spec.Id),
-
 		HealthCheckConfig: &route53.HealthCheckConfig{
 			IPAddress:                &address,
 			FullyQualifiedDomainName: &host,
@@ -113,7 +111,7 @@ func (c *Route53HealthCheckReconciler) createHealthCheck(ctx context.Context, sp
 	}
 
 	// Add the tag to identify it
-	_, err = c.client.ChangeTagsForResourceWithContext(ctx, &route53.ChangeTagsForResourceInput{
+	_, err = r.client.ChangeTagsForResourceWithContext(ctx, &route53.ChangeTagsForResourceInput{
 		AddTags: []*route53.Tag{
 			{
 				Key:   aws.String(idTag),

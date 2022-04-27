@@ -106,7 +106,7 @@ func TestIngress(t *testing.T) {
 				"RecordType":       Equal("A"),
 				"RecordTTL":        Equal(kuadrantv1.TTL(60)),
 				"SetIdentifier":    Equal(ingress.Status.LoadBalancer.Ingress[0].IP),
-				"ProviderSpecific": ConsistOf(kuadrantv1.ProviderSpecific{{Name: "aws/weight", Value: "100"}}),
+				"ProviderSpecific": ConsistOf(kuadrantv1.ProviderSpecific{{Name: "aws/weight", Value: "120"}}),
 			})),
 		)),
 	))
@@ -143,7 +143,7 @@ func TestIngress(t *testing.T) {
 				"RecordType":       Equal("A"),
 				"RecordTTL":        Equal(kuadrantv1.TTL(60)),
 				"SetIdentifier":    Equal(ingress.Status.LoadBalancer.Ingress[0].IP),
-				"ProviderSpecific": ConsistOf(kuadrantv1.ProviderSpecific{{Name: "aws/weight", Value: "100"}}),
+				"ProviderSpecific": ConsistOf(kuadrantv1.ProviderSpecific{{Name: "aws/weight", Value: "120"}}),
 			})),
 		)),
 	))

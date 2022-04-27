@@ -1,11 +1,11 @@
-package os
+package env
 
 import (
 	"os"
 	"testing"
 )
 
-//These tests cannot be run in parallel and should be updated to use testing.SetEnv if/when we update to go 1.17+ https://pkg.go.dev/testing#B.Setenv
+// These tests cannot be run in parallel and should be updated to use testing.SetEnv if/when we update to go 1.17+ https://pkg.go.dev/testing#B.Setenv
 
 func TestGetEnvBool(t *testing.T) {
 	setupTestEnv(t)

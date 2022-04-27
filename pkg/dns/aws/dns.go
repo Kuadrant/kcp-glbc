@@ -34,7 +34,7 @@ var (
 
 // Inspired by https://github.com/openshift/cluster-ingress-operator/blob/master/pkg/dns/aws/dns.go
 type Provider struct {
-	route53               *route53.Route53
+	route53               *InstrumentedRoute53
 	healthCheckReconciler *Route53HealthCheckReconciler
 	config                Config
 }
@@ -79,7 +79,7 @@ func NewProvider(config Config) (*Provider, error) {
 		r53Config = r53Config.WithRegion(endpoints.UsEast1RegionID)
 	}
 	p := &Provider{
-		route53: route53.New(sess, r53Config),
+		route53: &InstrumentedRoute53{route53.New(sess, r53Config)},
 		config:  config,
 	}
 	if err := validateServiceEndpoints(p); err != nil {

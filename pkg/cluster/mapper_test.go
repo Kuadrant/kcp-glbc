@@ -46,7 +46,7 @@ func Test_controlContext_Name(t *testing.T) {
 			ctx := &context{
 				name:      tt.ctxFields.name,
 				workspace: tt.ctxFields.workspace,
-				nameSpace: tt.ctxFields.namespace,
+				namespace: tt.ctxFields.namespace,
 			}
 			cr := &controlContext{
 				context: ctx,

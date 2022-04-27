@@ -1,4 +1,18 @@
-package certmanager
+/*
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package tls
 
 import (
 	"context"
@@ -11,7 +25,7 @@ import (
 	certman "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
 	certmanclient "github.com/jetstack/cert-manager/pkg/client/clientset/versioned/typed/certmanager/v1"
-	"github.com/kuadrant/kcp-glbc/pkg/tls"
+
 	v1 "k8s.io/api/core/v1"
 	k8errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -52,6 +66,8 @@ type CertManager struct {
 	validDomains          []string
 }
 
+var _ Provider = &CertManager{}
+
 type LEConfig struct {
 	Email string
 }
@@ -68,11 +84,10 @@ type CertManagerConfig struct {
 	// namespace in the control cluster where we create certificates
 	CertificateNS string
 	// set of domains we allow certs to be created for
-	ValidDomans []string
+	ValidDomains []string
 }
 
 func awsSecret() v1.Secret {
-
 	accessKeyID := os.Getenv(envAwsAccessKeyID)
 	accessSecret := os.Getenv(envAwsAccessSecret)
 	zoneID := os.Getenv(envAwsZoneID)
@@ -97,7 +112,7 @@ func NewCertManager(c CertManagerConfig) (*CertManager, error) {
 		k8sClient:             c.K8sClient,
 		certProvider:          c.CertProvider,
 		Region:                c.Region,
-		validDomains:          c.ValidDomans,
+		validDomains:          c.ValidDomains,
 	}
 
 	if c.LEConfig == nil {
@@ -117,8 +132,15 @@ func NewCertManager(c CertManagerConfig) (*CertManager, error) {
 	return cm, nil
 }
 
-func (cm *CertManager) issuer(ns string) *certman.Issuer {
+func (cm *CertManager) IssuerID() string {
+	return string(cm.certProvider)
+}
 
+func (cm *CertManager) Domains() []string {
+	return cm.validDomains
+}
+
+func (cm *CertManager) issuer(ns string) *certman.Issuer {
 	ci := certman.Issuer{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: ns,
@@ -163,7 +185,7 @@ func (cm *CertManager) issuer(ns string) *certman.Issuer {
 }
 
 // Initialize will configure the issuer and aws access secret.
-//TODO this should probably be in a reconciler triggered by a GLBC TLS CRD (so that it can set up multiple issuers and reconcile any changes. )
+// TODO this should probably be in a reconciler triggered by a GLBC TLS CRD (so that it can set up multiple issuers and reconcile any changes. )
 func (cm *CertManager) Initialize(ctx context.Context) error {
 	// TODO we might want to create CRD to watch for setup
 	ns := cm.certificateNS
@@ -206,7 +228,9 @@ func (cm *CertManager) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (cm *CertManager) certificate(cr tls.CertificateRequest) *certman.Certificate {
+func (cm *CertManager) certificate(cr CertificateRequest) *certman.Certificate {
+	annotations := cr.Annotations()
+	annotations[tlsIssuerAnnotation] = cm.IssuerID()
 	return &certman.Certificate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cr.Name(),
@@ -216,9 +240,9 @@ func (cm *CertManager) certificate(cr tls.CertificateRequest) *certman.Certifica
 			SecretName: cr.Name(),
 			SecretTemplate: &certman.CertificateSecretTemplate{
 				Labels:      cr.Labels(),
-				Annotations: cr.Annotations(),
+				Annotations: annotations,
 			},
-			//TODO Some of the below should be pulled out into a CRD
+			// TODO Some of the below should be pulled out into a CRD
 			Duration: &metav1.Duration{
 				Duration: time.Hour * 24 * 90, // cert lasts for 90 days
 			},
@@ -250,8 +274,7 @@ func isValidDomain(host string, allowed []string) bool {
 	return false
 }
 
-func (cm *CertManager) Create(ctx context.Context, cr tls.CertificateRequest) error {
-
+func (cm *CertManager) Create(ctx context.Context, cr CertificateRequest) error {
 	if !isValidDomain(cr.Host(), cm.validDomains) {
 		return fmt.Errorf("cannot create certificate for host %s invalid domain", cr.Host())
 	}
@@ -260,17 +283,30 @@ func (cm *CertManager) Create(ctx context.Context, cr tls.CertificateRequest) er
 	if err != nil {
 		return err
 	}
+	// TODO: Move to Certificate informer add handler
+	CertificateRequestCount.WithLabelValues(cm.IssuerID(), cr.Host()).Inc()
 	return nil
 }
 
-func (cm *CertManager) Delete(ctx context.Context, cr tls.CertificateRequest) error {
-
+func (cm *CertManager) Delete(ctx context.Context, cr CertificateRequest) error {
 	// delete the certificate and delete the secrets
-	if err := cm.certClient.Certificates(cm.certificateNS).Delete(ctx, cr.Name(), metav1.DeleteOptions{}); err != nil && !k8errors.IsNotFound(err) {
-		return err
+	certNotFound := false
+	if err := cm.certClient.Certificates(cm.certificateNS).Delete(ctx, cr.Name(), metav1.DeleteOptions{}); err != nil {
+		if !k8errors.IsNotFound(err) {
+			return err
+		}
+		certNotFound = true
 	}
-	if err := cm.k8sClient.CoreV1().Secrets(cm.certificateNS).Delete(ctx, cr.Name(), metav1.DeleteOptions{}); err != nil && !k8errors.IsNotFound(err) {
-		return err
+	if err := cm.k8sClient.CoreV1().Secrets(cm.certificateNS).Delete(ctx, cr.Name(), metav1.DeleteOptions{}); err != nil {
+		if !k8errors.IsNotFound(err) {
+			return err
+		}
+		if !certNotFound {
+			// The Secret does not exist, which indicates the TLS certificate request is still pending,
+			// so we must account for decreasing the number of pending requests.
+			// TODO: Move to Certificate informer delete handler
+			CertificateRequestCount.WithLabelValues(cm.IssuerID(), cr.Host()).Dec()
+		}
 	}
 	return nil
 }
