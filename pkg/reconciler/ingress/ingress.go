@@ -15,7 +15,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
@@ -33,9 +32,8 @@ const (
 )
 
 func (c *Controller) reconcile(ctx context.Context, ingress *networkingv1.Ingress) error {
-	// is deleting
 	if ingress.DeletionTimestamp != nil && !ingress.DeletionTimestamp.IsZero() {
-		klog.Infof("deleting root ingress '%v'", ingress.Name)
+		c.Logger.Info("Deleting Ingress", "ingress", ingress)
 
 		// delete any DNS records
 		if err := c.ensureDNS(ctx, ingress); err != nil {
@@ -56,7 +54,7 @@ func (c *Controller) reconcile(ctx context.Context, ingress *networkingv1.Ingres
 
 	if ingress.Annotations == nil || ingress.Annotations[cluster.ANNOTATION_HCG_HOST] == "" {
 		// Let's assign it a global hostname if any
-		generatedHost := fmt.Sprintf("%s.%s", xid.New(), *c.domain)
+		generatedHost := fmt.Sprintf("%s.%s", xid.New(), c.domain)
 		patch := fmt.Sprintf(`{"metadata":{"annotations":{%q:%q}}}`, cluster.ANNOTATION_HCG_HOST, generatedHost)
 		i, err := c.patchIngress(ctx, ingress, []byte(patch))
 		if err != nil {
@@ -67,7 +65,7 @@ func (c *Controller) reconcile(ctx context.Context, ingress *networkingv1.Ingres
 
 	// if custom hosts are not enabled all the hosts in the ingress
 	// will be replaced to the generated host
-	if !*c.customHostsEnabled {
+	if !c.customHostsEnabled {
 		err := c.replaceCustomHosts(ctx, ingress)
 		if err != nil {
 			return err
@@ -92,17 +90,17 @@ func (c *Controller) reconcile(ctx context.Context, ingress *networkingv1.Ingres
 }
 
 // ensureCertificate creates a certificate request for the root ingress into the control cluster
-func (c *Controller) ensureCertificate(ctx context.Context, rootIngress *networkingv1.Ingress) error {
+func (c *Controller) ensureCertificate(ctx context.Context, ingress *networkingv1.Ingress) error {
 	if c.certProvider == nil {
-		klog.Info("TLS support is not enabled, skipping certificate request")
+		c.Logger.Info("TLS support is not enabled, skipping certificate request")
 		return nil
 	}
 
-	controlClusterContext, err := cluster.NewControlObjectMapper(rootIngress)
+	controlClusterContext, err := cluster.NewControlObjectMapper(ingress)
 	if err != nil {
 		return err
 	}
-	if rootIngress.DeletionTimestamp != nil && !rootIngress.DeletionTimestamp.IsZero() {
+	if ingress.DeletionTimestamp != nil && !ingress.DeletionTimestamp.IsZero() {
 		if err := c.certProvider.Delete(ctx, controlClusterContext); err != nil {
 			return err
 		}
@@ -113,10 +111,10 @@ func (c *Controller) ensureCertificate(ctx context.Context, rootIngress *network
 		return err
 	}
 
-	klog.Info("Patching Ingress With TLS ", rootIngress.Name)
+	c.Logger.Info("Patching Ingress with TLS Secret", "ingress", ingress)
 	patch := fmt.Sprintf(`{"spec":{"tls":[{"hosts":[%q],"secretName":%q}]}}`, controlClusterContext.Host(), controlClusterContext.Name())
-	if _, err := c.patchIngress(ctx, rootIngress, []byte(patch)); err != nil {
-		klog.Info("failed to patch ingress *** ", err)
+	if _, err := c.patchIngress(ctx, ingress, []byte(patch)); err != nil {
+		c.Logger.Error(err, "Failed to patch Ingress", "ingress", ingress)
 		return err
 	}
 
@@ -293,7 +291,6 @@ func (c *Controller) getServices(ctx context.Context, ingress *networkingv1.Ingr
 	var services []*corev1.Service
 	for _, rule := range ingress.Spec.Rules {
 		for _, path := range rule.HTTP.Paths {
-			klog.Infof("getting service: %v", path.Backend.Service.Name)
 			service, err := c.kubeClient.Cluster(logicalcluster.From(ingress)).CoreV1().Services(ingress.Namespace).Get(ctx, path.Backend.Service.Name, metav1.GetOptions{})
 			if err == nil {
 				c.tracker.add(ingress, service)

@@ -27,14 +27,14 @@ type HealthCheckProtocol string
 const HealthCheckProtocolHTTP HealthCheckProtocol = "HTTP"
 const HealthCheckProtocolHTTPS HealthCheckProtocol = "HTTPS"
 
-type FakeHealthCheckReconciler struct{}
+type fakeHealthCheckReconciler struct{}
 
-func (*FakeHealthCheckReconciler) Reconcile(ctx context.Context, _ HealthCheckSpec, _ *v1.Endpoint) error {
+func (*fakeHealthCheckReconciler) Reconcile(ctx context.Context, _ HealthCheckSpec, _ *v1.Endpoint) error {
 	return nil
 }
 
-func (*FakeHealthCheckReconciler) Delete(ctx context.Context, _ *v1.Endpoint) error {
+func (*fakeHealthCheckReconciler) Delete(ctx context.Context, _ *v1.Endpoint) error {
 	return nil
 }
 
-var _ HealthCheckReconciler = &FakeHealthCheckReconciler{}
+var _ HealthCheckReconciler = &fakeHealthCheckReconciler{}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"k8s.io/klog/v2"
+	"github.com/go-logr/logr"
 )
 
 // HostsWatcher keeps track of changes in host addresses in the background.
@@ -15,20 +15,22 @@ type HostsWatcher struct {
 	Records       []recordWatcher
 	OnChange      func(interface{})
 	WatchInterval func(ttl time.Duration) time.Duration
+	logger        logr.Logger
 }
 
-func NewHostsWatcher(resolver HostResolver, watchInterval func(ttl time.Duration) time.Duration) *HostsWatcher {
+func NewHostsWatcher(l *logr.Logger, resolver HostResolver, watchInterval func(ttl time.Duration) time.Duration) *HostsWatcher {
 	return &HostsWatcher{
 		Resolver:      resolver,
 		Records:       []recordWatcher{},
 		WatchInterval: watchInterval,
+		logger:        l.WithName("host-watcher"),
 	}
 }
 
 func (w *HostsWatcher) ListHostRecordWatchers(obj interface{}) []recordWatcher {
 	var recordWatchers []recordWatcher
 	for _, record := range w.Records {
-		if obj == record.Key {
+		if obj == record.key {
 			recordWatchers = append(recordWatchers, record)
 		}
 	}
@@ -38,7 +40,7 @@ func (w *HostsWatcher) ListHostRecordWatchers(obj interface{}) []recordWatcher {
 // StartWatching begins tracking changes in the addresses for host
 func (w *HostsWatcher) StartWatching(ctx context.Context, obj interface{}, host string) bool {
 	for _, recordWatcher := range w.Records {
-		if recordWatcher.Key == obj && recordWatcher.Host == host {
+		if recordWatcher.key == obj && recordWatcher.Host == host {
 			return false
 		}
 	}
@@ -47,18 +49,19 @@ func (w *HostsWatcher) StartWatching(ctx context.Context, obj interface{}, host 
 
 	recordWatcher := recordWatcher{
 		cancel:        cancel,
+		logger:        w.logger.WithValues("key", obj, "host", host),
 		resolver:      w.Resolver,
 		Host:          host,
-		Key:           obj,
-		OnChange:      w.OnChange,
-		Records:       []HostAddress{},
-		WatchInterval: w.WatchInterval,
+		key:           obj,
+		onChange:      w.OnChange,
+		records:       []HostAddress{},
+		watchInterval: w.WatchInterval,
 	}
 	recordWatcher.watch(c)
 
 	w.Records = append(w.Records, recordWatcher)
 
-	klog.V(3).Infof("Started watching %s with host %s", obj, host)
+	w.logger.V(3).Info("Started host watcher")
 	return true
 }
 
@@ -66,7 +69,7 @@ func (w *HostsWatcher) StartWatching(ctx context.Context, obj interface{}, host 
 func (w *HostsWatcher) StopWatching(obj interface{}, host string) {
 	var records []recordWatcher
 	for _, recordWatcher := range w.Records {
-		if (host == "" || host == recordWatcher.Host) && recordWatcher.Key == obj {
+		if (host == "" || host == recordWatcher.Host) && recordWatcher.key == obj {
 			recordWatcher.stop()
 			continue
 		}
@@ -76,13 +79,14 @@ func (w *HostsWatcher) StopWatching(obj interface{}, host string) {
 }
 
 type recordWatcher struct {
+	logger        logr.Logger
 	resolver      HostResolver
 	cancel        context.CancelFunc
-	Key           interface{}
-	OnChange      func(key interface{})
-	WatchInterval func(ttl time.Duration) time.Duration
+	key           interface{}
+	onChange      func(key interface{})
+	watchInterval func(ttl time.Duration) time.Duration
 	Host          string
-	Records       []HostAddress
+	records       []HostAddress
 }
 
 func DefaultInterval(ttl time.Duration) time.Duration {
@@ -100,26 +104,26 @@ func (w *recordWatcher) watch(ctx context.Context) {
 
 			newRecords, err := w.resolver.LookupIPAddr(ctx, w.Host)
 			if err != nil {
-				klog.Error(err)
+				w.logger.Error(err, "Failed to lookup IP address")
 				continue
 			}
 
 			if updated := w.updateRecords(newRecords); updated {
-				klog.V(3).Infof("New records found for host %s. Updating", w.Host)
-				w.OnChange(w.Key)
+				w.logger.V(3).Info("New records found")
+				w.onChange(w.key)
 			}
 
-			ttl := w.Records[0].TTL
-			refreshInterval := w.WatchInterval(ttl)
+			ttl := w.records[0].TTL
+			refreshInterval := w.watchInterval(ttl)
 			time.Sleep(refreshInterval)
-			klog.V(4).Infof("Refreshing records for host %s with TTL %d. Refresh interval: %d", w.Host, int(ttl.Seconds()), int(refreshInterval.Seconds()))
+			w.logger.V(4).Info("Refreshing records for host", "TTL", int(ttl.Seconds()), "interval", int(refreshInterval.Seconds()))
 		}
 	}()
 }
 
 func (w *recordWatcher) updateRecords(newRecords []HostAddress) bool {
-	if len(w.Records) != len(newRecords) {
-		w.Records = newRecords
+	if len(w.records) != len(newRecords) {
+		w.records = newRecords
 		return true
 	}
 
@@ -127,24 +131,24 @@ func (w *recordWatcher) updateRecords(newRecords []HostAddress) bool {
 	updatedTTLs := false
 
 	for i, newRecord := range newRecords {
-		if !w.Records[i].IP.Equal(newRecord.IP) {
+		if !w.records[i].IP.Equal(newRecord.IP) {
 			updatedIPs = true
 			continue
 		}
 
-		if w.Records[i].TTL < newRecord.TTL {
+		if w.records[i].TTL < newRecord.TTL {
 			updatedTTLs = true
 		}
 	}
 
 	if updatedIPs || updatedTTLs {
-		w.Records = newRecords
+		w.records = newRecords
 	}
 
 	return updatedIPs
 }
 
 func (w *recordWatcher) stop() {
-	klog.V(3).Infof("Stopping record watcher for %s/%s", w.Key, w.Host)
+	w.logger.V(3).Info("Stopping host watcher")
 	w.cancel()
 }

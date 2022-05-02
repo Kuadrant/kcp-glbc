@@ -6,7 +6,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
 
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 
@@ -33,7 +32,7 @@ func (c *Controller) reconcile(ctx context.Context, secret *v1.Secret) error {
 	}
 
 	if secret.DeletionTimestamp != nil {
-		klog.Infof("control cluster secret %s deleted removing mirrored secret from kcp", secret.Name)
+		c.Logger.Info("Removing mirrored Secret from KCP, control cluster Secret deleted", "secret", secret)
 		if err := c.ensureDelete(ctx, kcpCtx, secret); err != nil {
 			return err
 		}
@@ -50,7 +49,7 @@ func (c *Controller) reconcile(ctx context.Context, secret *v1.Secret) error {
 		return err
 	}
 	if err := c.ensureMirrored(ctx, kcpCtx, secret); err != nil {
-		klog.Errorf("failed to mirror secret %s", err.Error())
+		c.Logger.Error(err, "Failed to mirror Secret", "secret", secret)
 		return err
 	}
 
@@ -84,7 +83,7 @@ func (c *Controller) ensureDelete(ctx context.Context, kctx cluster.ObjectMapper
 }
 
 func (c *Controller) ensureMirrored(ctx context.Context, kctx cluster.ObjectMapper, secret *v1.Secret) error {
-	klog.Infof("mirroring %s tls secret to workspace %s namespace %s and secret %s ", kctx.Name(), kctx.Workspace(), kctx.Namespace(), kctx.Name())
+	c.Logger.Info("Mirroring TLS secret", "name", kctx.Name(), "workspace", kctx.Workspace(), "namespace", kctx.Namespace())
 	mirror := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      kctx.Name(),

@@ -12,7 +12,6 @@ import (
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
 
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 
@@ -24,7 +23,6 @@ const controllerName = "kcp-glbc-deployment"
 // NewController returns a new Controller which reconciles Deployment.
 func NewController(config *ControllerConfig) (*Controller, error) {
 	queue := workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerName)
-
 	c := &Controller{
 		Controller:            reconciler.NewController(controllerName, queue),
 		coreClient:            config.DeploymentClient,
@@ -32,7 +30,6 @@ func NewController(config *ControllerConfig) (*Controller, error) {
 	}
 	c.Process = c.process
 
-	// Watch for events related to Deployments
 	c.sharedInformerFactory.Apps().V1().Deployments().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { c.Enqueue(obj) },
 		UpdateFunc: func(_, obj interface{}) { c.Enqueue(obj) },
@@ -61,21 +58,20 @@ type Controller struct {
 }
 
 func (c *Controller) process(ctx context.Context, key string) error {
-	obj, exists, err := c.indexer.GetByKey(key)
+	deployment, exists, err := c.indexer.GetByKey(key)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		klog.Infof("Object with key %q was deleted", key)
+		c.Logger.Info("Deployment was deleted", "key", key)
 		return nil
 	}
 
-	current := obj.(*appsv1.Deployment)
-
+	current := deployment.(*appsv1.Deployment)
 	previous := current.DeepCopy()
 
-	if err := c.reconcile(ctx, current); err != nil {
+	if err = c.reconcile(ctx, current); err != nil {
 		return err
 	}
 
@@ -85,5 +81,5 @@ func (c *Controller) process(ctx context.Context, key string) error {
 		return err
 	}
 
-	return err
+	return nil
 }

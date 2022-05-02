@@ -3,11 +3,12 @@ package ingress
 import (
 	"sync"
 
+	"github.com/go-logr/logr"
+
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	k8scache "k8s.io/client-go/tools/cache"
-	"k8s.io/klog/v2"
 )
 
 // tracker is used to track the relationship between services and ingresses.
@@ -15,13 +16,15 @@ import (
 // trigger a reconciliation of the affected ingresses.
 type tracker struct {
 	lock               sync.Mutex
+	logger             logr.Logger
 	serviceToIngresses map[string]sets.String
 	ingressToServices  map[string]sets.String
 }
 
 // newTracker creates a new tracker.
-func newTracker() tracker {
-	return tracker{
+func newTracker(l *logr.Logger) *tracker {
+	return &tracker{
+		logger:             l.WithName("tracker"),
 		serviceToIngresses: make(map[string]sets.String),
 		ingressToServices:  make(map[string]sets.String),
 	}
@@ -41,21 +44,21 @@ func (t *tracker) getIngressesForService(key string) sets.String {
 }
 
 // Adds a service to an ingress (key) to be tracked.
-func (t *tracker) add(ingress *networkingv1.Ingress, s *corev1.Service) {
+func (t *tracker) add(ingress *networkingv1.Ingress, service *corev1.Service) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
-	klog.Infof("tracking service %q for ingress %q", s.Name, ingress.Name)
+	t.logger.Info("Tracking Service for Ingress", "service", service, "ingress", ingress)
 
 	ingressKey, err := k8scache.MetaNamespaceKeyFunc(ingress)
 	if err != nil {
-		klog.Errorf("Failed to get ingress key: %v", err)
+		t.logger.Error(err, "Failed to get Ingress key")
 		return
 	}
 
-	serviceKey, err := k8scache.MetaNamespaceKeyFunc(s)
+	serviceKey, err := k8scache.MetaNamespaceKeyFunc(service)
 	if err != nil {
-		klog.Errorf("Failed to get service key: %v", err)
+		t.logger.Error(err, "Failed to get Service key")
 		return
 	}
 

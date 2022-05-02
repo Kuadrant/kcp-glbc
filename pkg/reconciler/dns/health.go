@@ -10,10 +10,10 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+
 	v1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
 	"github.com/kuadrant/kcp-glbc/pkg/cluster"
 	"github.com/kuadrant/kcp-glbc/pkg/dns"
-	"k8s.io/klog/v2"
 )
 
 // healthChecksConfig represents the user configuration for the health checks
@@ -57,15 +57,14 @@ var annotationsConfigMap = map[string]func(string, *healthChecksConfig) error{
 func (c *Controller) ReconcileHealthChecks(ctx context.Context, dnsRecord *v1.DNSRecord) error {
 	config, err := configFromAnnotations(dnsRecord.Annotations)
 	if err != nil {
-		klog.Error(err)
-		return nil
+		return err
 	}
 
 	if config == nil {
 		return c.reconcileHealthCheckDeletion(ctx, dnsRecord)
 	}
 
-	if err := validateHealthChecksConfig(config); err != nil {
+	if err = validateHealthChecksConfig(config); err != nil {
 		return err
 	}
 
@@ -78,7 +77,7 @@ func (c *Controller) reconcileHealthCheck(ctx context.Context, config *healthChe
 	for _, dnsEndpoint := range dnsRecord.Spec.Endpoints {
 		ok := false
 		if _, ok = dnsEndpoint.GetAddress(); !ok {
-			klog.Infof("Skipping health check creation for %s/%s. No address set", dnsRecord.Name, dnsEndpoint.DNSName)
+			c.Logger.Info("Skipping health check creation: no address set", "record", dnsRecord, "endpoint", dnsEndpoint.DNSName)
 			continue
 		}
 
@@ -96,7 +95,7 @@ func (c *Controller) reconcileHealthCheck(ctx context.Context, config *healthChe
 			FailureThreshold: config.FailureThreshold,
 		}
 
-		klog.Infof("Reconciling health check for endpoint %s@%s", dnsEndpoint.DNSName, dnsEndpoint.SetIdentifier)
+		c.Logger.Info("Reconciling health check for endpoint", "name", dnsEndpoint.DNSName, "identifier", dnsEndpoint.SetIdentifier)
 
 		err = healthCheck.Reconcile(ctx, spec, dnsEndpoint)
 		if err != nil {
@@ -125,7 +124,7 @@ func (c *Controller) reconcileHealthCheckDeletion(ctx context.Context, dnsRecord
 func idForEndpoint(dnsRecord *v1.DNSRecord, endpoint *v1.Endpoint) (string, error) {
 	hash := md5.New()
 	if _, err := io.WriteString(hash, fmt.Sprintf("%s/%s@%s", dnsRecord.Name, endpoint.SetIdentifier, endpoint.DNSName)); err != nil {
-		return "", fmt.Errorf("Unexpected error creating ID for endpoint %s", endpoint.SetIdentifier)
+		return "", fmt.Errorf("unexpected error creating ID for endpoint %s", endpoint.SetIdentifier)
 	}
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }

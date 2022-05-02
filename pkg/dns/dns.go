@@ -23,5 +23,5 @@ type FakeProvider struct{}
 func (_ *FakeProvider) Ensure(record *v1.DNSRecord, zone v1.DNSZone) error { return nil }
 func (_ *FakeProvider) Delete(record *v1.DNSRecord, zone v1.DNSZone) error { return nil }
 func (*FakeProvider) HealthCheckReconciler() HealthCheckReconciler {
-	return &FakeHealthCheckReconciler{}
+	return &fakeHealthCheckReconciler{}
 }

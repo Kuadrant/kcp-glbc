@@ -6,10 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kuadrant/kcp-glbc/pkg/tls"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	"github.com/kuadrant/kcp-glbc/pkg/tls"
 )
 
 const (

@@ -24,7 +24,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"k8s.io/klog/v2"
+	"github.com/kuadrant/kcp-glbc/pkg/log"
 )
 
 const defaultMetricsEndpoint = "/metrics"
@@ -34,10 +34,10 @@ type Server struct {
 	listener   net.Listener
 }
 
-func NewServer(port *int) (*Server, error) {
+func NewServer(port int) (*Server, error) {
 	addr := "0"
-	if port != nil && *port != 0 {
-		addr = ":" + strconv.Itoa(*port)
+	if port != 0 {
+		addr = ":" + strconv.Itoa(port)
 	}
 
 	listener, err := newListener(addr)
@@ -61,7 +61,7 @@ func NewServer(port *int) (*Server, error) {
 
 func (s *Server) Start() (err error) {
 	if s.listener == nil {
-		klog.InfoS("Serving metrics is disabled")
+		log.Logger.Info("Serving metrics is disabled")
 		return
 	}
 	defer func() {
@@ -69,7 +69,7 @@ func (s *Server) Start() (err error) {
 			err = fmt.Errorf("serving metrics failed: %v", r)
 		}
 	}()
-	klog.InfoS("Started serving metrics", "address", s.listener.Addr())
+	log.Logger.Info("Started serving metrics", "address", s.listener.Addr())
 	if e := s.httpServer.Serve(s.listener); e != http.ErrServerClosed {
 		err = e
 	}
@@ -80,7 +80,7 @@ func (s *Server) Shutdown() error {
 	if s.listener == nil {
 		return nil
 	}
-	klog.Info("Stopping metrics server")
+	log.Logger.Info("Stopping metrics server")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	return s.httpServer.Shutdown(shutdownCtx)

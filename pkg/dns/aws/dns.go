@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	v1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
-	"github.com/kuadrant/kcp-glbc/pkg/dns"
+	"github.com/go-logr/logr"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
@@ -13,7 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/route53"
 
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/klog/v2"
+
+	v1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
+	"github.com/kuadrant/kcp-glbc/pkg/dns"
+	"github.com/kuadrant/kcp-glbc/pkg/log"
 )
 
 const (
@@ -28,15 +30,14 @@ const (
 	ProviderSpecificHealthCheckID        = "aws/health-check-id"
 )
 
-var (
-	_ dns.Provider = &Provider{}
-)
+var _ dns.Provider = &Provider{}
 
 // Inspired by https://github.com/openshift/cluster-ingress-operator/blob/master/pkg/dns/aws/dns.go
 type Provider struct {
 	route53               *InstrumentedRoute53
 	healthCheckReconciler *Route53HealthCheckReconciler
 	config                Config
+	logger                logr.Logger
 }
 
 // Config is the necessary input to configure the manager.
@@ -49,7 +50,6 @@ func NewProvider(config Config) (*Provider, error) {
 	var region string
 	if len(config.Region) > 0 {
 		region = config.Region
-		klog.Infof("using region from operator config region name %s", region)
 	}
 
 	sess, err := session.NewSession(&aws.Config{Region: aws.String(region)})
@@ -78,12 +78,14 @@ func NewProvider(config Config) (*Provider, error) {
 		// See https://docs.aws.amazon.com/general/latest/gr/r53.html for details.
 		r53Config = r53Config.WithRegion(endpoints.UsEast1RegionID)
 	}
+
 	p := &Provider{
 		route53: &InstrumentedRoute53{route53.New(sess, r53Config)},
 		config:  config,
+		logger:  log.Logger.WithName("aws-route53").WithValues("region", r53Config.Region),
 	}
 	if err := validateServiceEndpoints(p); err != nil {
-		return nil, fmt.Errorf("failed to validate aws provider service endpoints: %v", err)
+		return nil, fmt.Errorf("failed to validate AWS provider service endpoints: %v", err)
 	}
 	return p, nil
 }
@@ -106,46 +108,46 @@ const (
 	deleteAction action = "DELETE"
 )
 
-func (m *Provider) Ensure(record *v1.DNSRecord, zone v1.DNSZone) error {
-	return m.change(record, zone, upsertAction)
+func (p *Provider) Ensure(record *v1.DNSRecord, zone v1.DNSZone) error {
+	return p.change(record, zone, upsertAction)
 }
 
-func (m *Provider) Delete(record *v1.DNSRecord, zone v1.DNSZone) error {
-	return m.change(record, zone, deleteAction)
+func (p *Provider) Delete(record *v1.DNSRecord, zone v1.DNSZone) error {
+	return p.change(record, zone, deleteAction)
 }
 
-func (m *Provider) HealthCheckReconciler() dns.HealthCheckReconciler {
-	if m.healthCheckReconciler == nil {
-		m.healthCheckReconciler = NewRoute53HealthCheckReconciler(m.route53)
+func (p *Provider) HealthCheckReconciler() dns.HealthCheckReconciler {
+	if p.healthCheckReconciler == nil {
+		p.healthCheckReconciler = newRoute53HealthCheckReconciler(p.route53, p.logger)
 	}
 
-	return m.healthCheckReconciler
+	return p.healthCheckReconciler
 }
 
 // change will perform an action on a record.
-func (m *Provider) change(record *v1.DNSRecord, zone v1.DNSZone, action action) error {
+func (p *Provider) change(record *v1.DNSRecord, zone v1.DNSZone, action action) error {
 	// Configure records.
-	err := m.updateRecord(record, zone.ID, string(action))
+	err := p.updateRecord(record, zone.ID, string(action))
 	if err != nil {
 		return fmt.Errorf("failed to update record in zone %s: %v", zone.ID, err)
 	}
 	switch action {
 	case upsertAction:
-		klog.Infof("upserted DNS record %v, zone %v", record.Spec, zone)
+		p.logger.Info("Upserted DNS record", "record", record.Spec, "zone", zone)
 	case deleteAction:
-		klog.Infof("deleted DNS record %v, zone %v", record.Spec, zone)
+		p.logger.Info("Deleted DNS record", "record", record.Spec, "zone", zone)
 	}
 	return nil
 }
 
-func (m *Provider) updateRecord(record *v1.DNSRecord, zoneID, action string) error {
+func (p *Provider) updateRecord(record *v1.DNSRecord, zoneID, action string) error {
 	input := route53.ChangeResourceRecordSetsInput{HostedZoneId: aws.String(zoneID)}
 
 	expectedEndpointsMap := make(map[string]struct{})
 	var changes []*route53.Change
 	for _, endpoint := range record.Spec.Endpoints {
 		expectedEndpointsMap[endpoint.SetID()] = struct{}{}
-		change, err := m.changeForEndpoint(endpoint, action)
+		change, err := p.changeForEndpoint(endpoint, action)
 		if err != nil {
 			return err
 		}
@@ -154,13 +156,13 @@ func (m *Provider) updateRecord(record *v1.DNSRecord, zoneID, action string) err
 
 	// Delete any previously published records that are no longer present in record.Spec.Endpoints
 	if action != string(deleteAction) {
-		lastPublishedEndpoints, err := m.endpointsFromZoneStatus(record, zoneID)
+		lastPublishedEndpoints, err := p.endpointsFromZoneStatus(record, zoneID)
 		if err != nil {
 			return err
 		}
 		for _, endpoint := range lastPublishedEndpoints {
 			if _, found := expectedEndpointsMap[endpoint.SetID()]; !found {
-				change, err := m.changeForEndpoint(endpoint, string(deleteAction))
+				change, err := p.changeForEndpoint(endpoint, string(deleteAction))
 				if err != nil {
 					return err
 				}
@@ -172,15 +174,15 @@ func (m *Provider) updateRecord(record *v1.DNSRecord, zoneID, action string) err
 	input.ChangeBatch = &route53.ChangeBatch{
 		Changes: changes,
 	}
-	resp, err := m.route53.ChangeResourceRecordSets(&input)
+	resp, err := p.route53.ChangeResourceRecordSets(&input)
 	if err != nil {
 		return fmt.Errorf("couldn't update DNS record %s in zone %s: %v", record.Name, zoneID, err)
 	}
-	klog.Infof("updated DNS record: record name: %s zone id: %s resp: %v", zoneID, record.Name, resp)
+	p.logger.Info("Updated DNS record", "record", record, "zone", zoneID, "response", resp)
 	return nil
 }
 
-func (m *Provider) changeForEndpoint(endpoint *v1.Endpoint, action string) (*route53.Change, error) {
+func (p *Provider) changeForEndpoint(endpoint *v1.Endpoint, action string) (*route53.Change, error) {
 	if endpoint.RecordType != string(v1.ARecordType) {
 		return nil, fmt.Errorf("unsupported record type %s", endpoint.RecordType)
 	}
@@ -210,7 +212,7 @@ func (m *Provider) changeForEndpoint(endpoint *v1.Endpoint, action string) (*rou
 	if prop, ok := endpoint.GetProviderSpecificProperty(ProviderSpecificWeight); ok {
 		weight, err := strconv.ParseInt(prop.Value, 10, 64)
 		if err != nil {
-			klog.Errorf("Failed parsing value of %s: %s: %v; using weight of 0", ProviderSpecificWeight, prop.Value, err)
+			p.logger.Error(err, "Failed parsing value, using weight of 0", "weight", ProviderSpecificWeight, "value", prop.Value)
 			weight = 0
 		}
 		resourceRecordSet.Weight = aws.Int64(weight)
@@ -235,7 +237,7 @@ func (m *Provider) changeForEndpoint(endpoint *v1.Endpoint, action string) (*rou
 	return change, nil
 }
 
-func (m *Provider) endpointsFromZoneStatus(record *v1.DNSRecord, zoneID string) ([]*v1.Endpoint, error) {
+func (p *Provider) endpointsFromZoneStatus(record *v1.DNSRecord, zoneID string) ([]*v1.Endpoint, error) {
 	for _, zoneStatus := range record.Status.Zones {
 		if zoneStatus.DNSZone.ID == zoneID {
 			return zoneStatus.Endpoints, nil

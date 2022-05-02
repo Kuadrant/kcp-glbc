@@ -3,10 +3,11 @@ package placement
 import (
 	"fmt"
 
-	kcp "github.com/kcp-dev/kcp/pkg/reconciler/workload/namespace"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	kcp "github.com/kcp-dev/kcp/pkg/reconciler/workload/namespace"
 )
 
 type Placer interface {

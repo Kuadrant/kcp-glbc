@@ -11,7 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilclock "k8s.io/apimachinery/pkg/util/clock"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/klog/v2"
 
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 
@@ -30,7 +29,7 @@ const (
 )
 
 func (c *Controller) reconcile(ctx context.Context, dnsRecord *v1.DNSRecord) error {
-	klog.Infof("reconciling DNSRecord %q", dnsRecord.Name)
+	c.Logger.Info("Reconciling DNSRecord", "dnsRecord", dnsRecord)
 
 	// If the DNS record was deleted, clean up and return.
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
@@ -38,9 +37,9 @@ func (c *Controller) reconcile(ctx context.Context, dnsRecord *v1.DNSRecord) err
 			return err
 		}
 
-		klog.Infof("deleting dns record %v", dnsRecord)
+		c.Logger.Info("Deleting DNSRecord", "dnsRecord", dnsRecord)
 		if err := c.deleteRecord(dnsRecord); err != nil {
-			klog.Error(err, "failed to delete dnsrecord; will retry", "dnsrecord", dnsRecord)
+			c.Logger.Error(err, "Failed to delete DNSRecord", "record", dnsRecord)
 			return err
 		}
 
@@ -62,7 +61,7 @@ func (c *Controller) reconcile(ctx context.Context, dnsRecord *v1.DNSRecord) err
 	}
 
 	if err := c.ReconcileHealthChecks(ctx, dnsRecord); err != nil {
-		klog.Errorf("Failed to reconcile health check for DNSRecord %s: %v", dnsRecord.Name, err)
+		c.Logger.Error(err, "Failed to reconcile health check for DNSRecord", "record", dnsRecord)
 		return err
 	}
 
@@ -78,7 +77,7 @@ func (c *Controller) publishRecordToZones(zones []v1.DNSZone, record *v1.DNSReco
 		// (which would mean the target could have changed) or its
 		// status does not indicate that it has already been published.
 		if record.Generation == record.Status.ObservedGeneration && recordIsAlreadyPublishedToZone(record, &zone) {
-			klog.Info("skipping zone to which the DNS record is already published", "record", record.Spec, "dnszone", zone)
+			c.Logger.Info("Skipping zone to which the DNS record is already published", "record", record, "zone", zone)
 			continue
 		}
 
@@ -89,27 +88,27 @@ func (c *Controller) publishRecordToZones(zones []v1.DNSZone, record *v1.DNSReco
 		}
 
 		if recordIsAlreadyPublishedToZone(record, &zone) {
-			klog.Info("replacing DNS record", "record", record.Spec, "dnszone", zone)
+			c.Logger.Info("replacing DNS record", "record", record, "zone", zone)
 
 			if err := c.dnsProvider.Ensure(record, zone); err != nil {
-				klog.Error(err, "failed to replace DNS record in zone", "record", record.Spec, "dnszone", zone)
+				c.Logger.Error(err, "Failed to replace DNS record in zone", "record", record.Spec, "zone", zone)
 				condition.Status = string(ConditionTrue)
 				condition.Reason = "ProviderError"
 				condition.Message = fmt.Sprintf("The DNS provider failed to replace the record: %v", err)
 			} else {
-				klog.Info("replaced DNS record in zone", "record", record.Spec, "dnszone", zone)
+				c.Logger.Info("Replaced DNS record in zone", "record", record.Spec, "zone", zone)
 				condition.Status = string(ConditionFalse)
 				condition.Reason = "ProviderSuccess"
 				condition.Message = "The DNS provider succeeded in replacing the record"
 			}
 		} else {
 			if err := c.dnsProvider.Ensure(record, zone); err != nil {
-				klog.Error(err, "failed to publish DNS record to zone", "record", record.Spec, "dnszone", zone)
+				c.Logger.Error(err, "Failed to publish DNS record to zone", "record", record.Spec, "zone", zone)
 				condition.Status = string(ConditionTrue)
 				condition.Reason = "ProviderError"
 				condition.Message = fmt.Sprintf("The DNS provider failed to ensure the record: %v", err)
 			} else {
-				klog.Info("published DNS record to zone", "record", record.Spec, "dnszone", zone)
+				c.Logger.Info("Published DNS record to zone", "record", record.Spec, "zone", zone)
 				condition.Status = string(ConditionFalse)
 				condition.Reason = "ProviderSuccess"
 				condition.Message = "The DNS provider succeeded in ensuring the record"
@@ -137,7 +136,7 @@ func (c *Controller) deleteRecord(record *v1.DNSRecord) error {
 		if err != nil {
 			errs = append(errs, err)
 		} else {
-			klog.Info("deleted dnsrecord from DNS provider", "record", record.Spec, "zone", zone)
+			c.Logger.Info("Deleted DNSRecord from DNS provider", "record", record.Spec, "zone", zone)
 		}
 	}
 	if len(errs) == 0 {

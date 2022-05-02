@@ -18,23 +18,28 @@ import (
 	"context"
 	"time"
 
+	"github.com/go-logr/logr"
+
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
+
+	"github.com/kuadrant/kcp-glbc/pkg/log"
 )
 
 type Controller struct {
 	Name    string
 	Queue   workqueue.RateLimitingInterface
 	Process func(context.Context, string) error
+	Logger  logr.Logger
 }
 
 func NewController(name string, queue workqueue.RateLimitingInterface) *Controller {
 	controller := &Controller{
-		Name:  name,
-		Queue: queue,
+		Name:   name,
+		Queue:  queue,
+		Logger: log.Logger.WithName(name),
 	}
 	initMetrics(controller)
 	return controller
@@ -53,8 +58,8 @@ func (c *Controller) Start(ctx context.Context, numThreads int) {
 	defer runtime.HandleCrash()
 	defer c.Queue.ShutDown()
 
-	klog.InfoS("Starting workers", "controller", c.Name)
-	defer klog.InfoS("Stopping workers", "controller", c.Name)
+	c.Logger.Info("Starting workers")
+	defer c.Logger.Info("Stopping workers")
 
 	workerCount.WithLabelValues(c.Name).Set(float64(numThreads))
 
@@ -86,13 +91,11 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 	defer activeWorkers.WithLabelValues(c.Name).Add(-1)
 
 	start := time.Now()
-	defer func() {
-		reconcileTime.WithLabelValues(c.Name).Observe(time.Since(start).Seconds())
-	}()
+	reconcileTime.WithLabelValues(c.Name).Observe(time.Since(start).Seconds())
 
 	err := c.Process(ctx, key)
 
-	// Reconcile worked, nothing else to do for this workqueue item
+	// Reconcile worked, nothing else to do for this work-queue item
 	if err == nil {
 		c.Queue.Forget(key)
 		reconcileTotal.WithLabelValues(c.Name, labelSuccess).Inc()
@@ -103,9 +106,9 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 	reconcileTotal.WithLabelValues(c.Name, labelError).Inc()
 
 	// Re-enqueue up to 5 times
-	num := c.Queue.NumRequeues(key)
-	if num < 5 {
-		klog.Errorf("Error reconciling key %q, retrying... (#%d): %v", key, num, err)
+	n := c.Queue.NumRequeues(key)
+	if n < 5 {
+		c.Logger.Error(err, "Re-queuing after reconciliation error", "key", key, "retries", n)
 		c.Queue.AddRateLimited(key)
 		return true
 	}
@@ -113,7 +116,7 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 	// Give up and report error elsewhere.
 	c.Queue.Forget(key)
 	runtime.HandleError(err)
-	klog.Infof("Dropping key %q after failed retries: %v", key, err)
+	c.Logger.Error(err, "Dropping key after max failed retries", "key", key, "retries", n)
 
 	return true
 }

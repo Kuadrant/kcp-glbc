@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-logr/logr"
+	"github.com/rs/xid"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/route53"
+
 	v1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
 	"github.com/kuadrant/kcp-glbc/pkg/dns"
-	"github.com/rs/xid"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -22,13 +24,15 @@ var (
 
 type Route53HealthCheckReconciler struct {
 	client *InstrumentedRoute53
+	logger logr.Logger
 }
 
 var _ dns.HealthCheckReconciler = &Route53HealthCheckReconciler{}
 
-func NewRoute53HealthCheckReconciler(client *InstrumentedRoute53) *Route53HealthCheckReconciler {
+func newRoute53HealthCheckReconciler(c *InstrumentedRoute53, l logr.Logger) *Route53HealthCheckReconciler {
 	return &Route53HealthCheckReconciler{
-		client: client,
+		client: c,
+		logger: l.WithName("health"),
 	}
 }
 
@@ -138,7 +142,7 @@ func (r *Route53HealthCheckReconciler) updateHealthCheck(ctx context.Context, sp
 		return nil
 	}
 
-	klog.Infof("Updating health check %s with diff %v", *healthCheck.Id, diff)
+	r.logger.Info("Updating health check", "id", *healthCheck.Id, "change", diff)
 
 	_, err := r.client.UpdateHealthCheckWithContext(ctx, diff)
 	if err != nil {

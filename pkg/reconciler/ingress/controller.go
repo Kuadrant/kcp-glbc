@@ -13,7 +13,6 @@ import (
 	networkingv1lister "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
 
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
@@ -27,9 +26,7 @@ import (
 
 const controllerName = "kcp-glbc-ingress"
 
-// NewController returns a new Controller which splits new Ingress objects
-// into N virtual Ingresses labeled for each Cluster that exists at the time
-// the Ingress is created.
+// NewController returns a new Controller which reconciles Ingress.
 func NewController(config *ControllerConfig) *Controller {
 	queue := workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerName)
 
@@ -39,24 +36,21 @@ func NewController(config *ControllerConfig) *Controller {
 		impl.Client = config.KubeClient.Cluster(tenancyv1alpha1.RootCluster)
 	}
 	hostResolver = net.NewSafeHostResolver(hostResolver)
-	tracker := newTracker()
 	ingressPlacer := placement.NewPlacer()
 
+	base := reconciler.NewController(controllerName, queue)
 	c := &Controller{
-		Controller:            reconciler.NewController(controllerName, queue),
+		Controller:            base,
 		kubeClient:            config.KubeClient,
 		certProvider:          config.CertProvider,
 		sharedInformerFactory: config.SharedInformerFactory,
 		dnsRecordClient:       config.DnsRecordClient,
 		domain:                config.Domain,
-		tracker:               &tracker,
+		tracker:               newTracker(&base.Logger),
 		hostResolver:          hostResolver,
-		hostsWatcher: net.NewHostsWatcher(
-			hostResolver,
-			net.DefaultInterval,
-		),
-		customHostsEnabled: config.CustomHostsEnabled,
-		ingressPlacer:      ingressPlacer,
+		hostsWatcher:          net.NewHostsWatcher(&base.Logger, hostResolver, net.DefaultInterval),
+		customHostsEnabled:    config.CustomHostsEnabled,
+		ingressPlacer:         ingressPlacer,
 	}
 	c.Process = c.process
 	c.hostsWatcher.OnChange = c.Enqueue
@@ -84,10 +78,10 @@ type ControllerConfig struct {
 	KubeClient            kubernetes.ClusterInterface
 	DnsRecordClient       kuadrantv1.ClusterInterface
 	SharedInformerFactory informers.SharedInformerFactory
-	Domain                *string
+	Domain                string
 	CertProvider          tls.Provider
 	HostResolver          net.HostResolver
-	CustomHostsEnabled    *bool
+	CustomHostsEnabled    bool
 }
 
 type Controller struct {
@@ -98,28 +92,28 @@ type Controller struct {
 	indexer               cache.Indexer
 	lister                networkingv1lister.IngressLister
 	certProvider          tls.Provider
-	domain                *string
+	domain                string
 	tracker               *tracker
 	hostResolver          net.HostResolver
 	hostsWatcher          *net.HostsWatcher
-	customHostsEnabled    *bool
+	customHostsEnabled    bool
 	ingressPlacer         placement.Placer
 }
 
 func (c *Controller) process(ctx context.Context, key string) error {
-	obj, exists, err := c.indexer.GetByKey(key)
+	ingress, exists, err := c.indexer.GetByKey(key)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		klog.Infof("Object with key %q was deleted", key)
-		// The ingress has been deleted, so we remove any ingress to service tracking.
+		c.Logger.Info("Ingress was deleted", "key", key)
+		// The Ingress has been deleted, so we remove any Ingress to Service tracking.
 		c.tracker.deleteIngress(key)
 		return nil
 	}
-	current := obj.(*networkingv1.Ingress)
 
+	current := ingress.(*networkingv1.Ingress)
 	previous := current.DeepCopy()
 
 	err = c.reconcile(ctx, current)
@@ -127,13 +121,12 @@ func (c *Controller) process(ctx context.Context, key string) error {
 		return err
 	}
 
-	// If the object being reconciled changed as a result, update it.
 	if !equality.Semantic.DeepEqual(previous, current) {
 		_, err := c.kubeClient.Cluster(logicalcluster.From(current)).NetworkingV1().Ingresses(current.Namespace).Update(ctx, current, metav1.UpdateOptions{})
 		return err
 	}
 
-	return err
+	return nil
 }
 
 // ingressesFromService enqueues all the related ingresses for a given service when the service is changed.
@@ -149,9 +142,9 @@ func (c *Controller) ingressesFromService(obj interface{}) {
 	// Does that Service has any Ingress associated to?
 	ingresses := c.tracker.getIngressesForService(serviceKey)
 
-	// One Service can be referenced by 0..n Ingresses, so we need to enqueue all the related ingreses.
+	// One Service can be referenced by 0..N Ingresses, so we need to enqueue all the related Ingresses.
 	for _, ingress := range ingresses.List() {
-		klog.Infof("tracked service %q triggered Ingress %q reconciliation", service.Name, ingress)
+		c.Logger.Info("Enqueuing Ingress reconciliation via tracked Service", "ingress", ingress, "service", service)
 		c.Queue.Add(ingress)
 	}
 }

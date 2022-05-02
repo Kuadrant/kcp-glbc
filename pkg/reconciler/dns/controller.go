@@ -9,7 +9,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
 
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 
@@ -27,7 +26,6 @@ const controllerName = "kcp-glbc-dns"
 // NewController returns a new Controller which reconciles DNSRecord.
 func NewController(config *ControllerConfig) (*Controller, error) {
 	queue := workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerName)
-
 	c := &Controller{
 		Controller:            reconciler.NewController(controllerName, queue),
 		dnsRecordClient:       config.DnsRecordClient,
@@ -35,7 +33,7 @@ func NewController(config *ControllerConfig) (*Controller, error) {
 	}
 	c.Process = c.process
 
-	dnsProvider, err := createDNSProvider(*config.DNSProvider)
+	dnsProvider, err := c.createDNSProvider(config.DNSProvider)
 	if err != nil {
 		return nil, err
 	}
@@ -48,13 +46,12 @@ func NewController(config *ControllerConfig) (*Controller, error) {
 			ID: zoneID,
 		}
 		dnsZones = append(dnsZones, *dnsZone)
-		klog.Infof("Using aws dns zone id : %s", zoneID)
+		c.Logger.Info("Using AWS DNS zone", "id", zoneID)
 	} else {
-		klog.Warningf("No aws dns zone id set(AWS_DNS_PUBLIC_ZONE_ID). No DNS records will be created!!")
+		c.Logger.Info("No AWS DNS zone id set (AWS_DNS_PUBLIC_ZONE_ID), no DNS records will be created!")
 	}
 	c.dnsZones = dnsZones
 
-	// Watch for events related to DNSRecords
 	c.sharedInformerFactory.Kuadrant().V1().DNSRecords().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { c.Enqueue(obj) },
 		UpdateFunc: func(_, obj interface{}) { c.Enqueue(obj) },
@@ -70,7 +67,7 @@ func NewController(config *ControllerConfig) (*Controller, error) {
 type ControllerConfig struct {
 	DnsRecordClient       kuadrantv1.ClusterInterface
 	SharedInformerFactory externalversions.SharedInformerFactory
-	DNSProvider           *string
+	DNSProvider           string
 }
 
 type Controller struct {
@@ -84,42 +81,40 @@ type Controller struct {
 }
 
 func (c *Controller) process(ctx context.Context, key string) error {
-	obj, exists, err := c.indexer.GetByKey(key)
+	dnsRecord, exists, err := c.indexer.GetByKey(key)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		klog.Infof("Object with key %q was deleted", key)
+		c.Logger.Info("DNSRecord was deleted", "key", key)
 		return nil
 	}
 
-	current := obj.(*v1.DNSRecord)
-
+	current := dnsRecord.(*v1.DNSRecord)
 	previous := current.DeepCopy()
 
-	if err := c.reconcile(ctx, current); err != nil {
+	if err = c.reconcile(ctx, current); err != nil {
 		return err
 	}
 
-	// If the object being reconciled changed as a result, update it.
 	if !equality.Semantic.DeepEqual(previous, current) {
 		_, err := c.dnsRecordClient.Cluster(logicalcluster.From(current)).KuadrantV1().DNSRecords(current.Namespace).Update(ctx, current, metav1.UpdateOptions{})
 		return err
 	}
 
-	return err
+	return nil
 }
 
-func createDNSProvider(dnsProviderName string) (dns.Provider, error) {
+func (c *Controller) createDNSProvider(dnsProviderName string) (dns.Provider, error) {
 	var dnsProvider dns.Provider
 	var dnsError error
 	switch dnsProviderName {
 	case "aws":
-		klog.Infof("Using aws dns provider")
+		c.Logger.Info("Creating DNS provider", "provider", "aws")
 		dnsProvider, dnsError = newAWSDNSProvider()
 	default:
-		klog.Infof("Using fake dns provider")
+		c.Logger.Info("Creating DNS provider", "provider", "fake")
 		dnsProvider = &dns.FakeProvider{}
 	}
 	return dnsProvider, dnsError
