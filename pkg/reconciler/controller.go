@@ -46,7 +46,7 @@ func (c *Controller) Enqueue(obj interface{}) {
 		runtime.HandleError(err)
 		return
 	}
-	c.Queue.AddRateLimited(key)
+	c.Queue.Add(key)
 }
 
 func (c *Controller) Start(ctx context.Context, numThreads int) {
