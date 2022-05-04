@@ -2,7 +2,6 @@ package ingress
 
 import (
 	"context"
-	"sync"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -60,7 +59,7 @@ func NewController(config *ControllerConfig) *Controller {
 		ingressPlacer:      ingressPlacer,
 	}
 	c.Process = c.process
-	c.hostsWatcher.OnChange = c.synchronisedEnqueue()
+	c.hostsWatcher.OnChange = c.Enqueue
 
 	// Watch for events related to Ingresses
 	c.sharedInformerFactory.Networking().V1().Ingresses().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -154,16 +153,5 @@ func (c *Controller) ingressesFromService(obj interface{}) {
 	for _, ingress := range ingresses.List() {
 		klog.Infof("tracked service %q triggered Ingress %q reconciliation", service.Name, ingress)
 		c.Queue.Add(ingress)
-	}
-}
-
-// synchronisedEnqueue returns a function to be passed to the host watcher that
-// enqueues the affected object to be reconciled by c, in a synchronized fashion
-func (c *Controller) synchronisedEnqueue() func(obj interface{}) {
-	var mu sync.Mutex
-	return func(obj interface{}) {
-		mu.Lock()
-		defer mu.Unlock()
-		c.Enqueue(obj)
 	}
 }
