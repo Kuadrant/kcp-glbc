@@ -64,22 +64,22 @@ func TestIngress(t *testing.T) {
 
 	name := "echo"
 
-	// Create the root Deployment
+	// Create the Deployment
 	_, err := test.Client().Core().Cluster(logicalcluster.From(namespace)).AppsV1().Deployments(namespace.Name).
-		Apply(test.Ctx(), deploymentConfiguration(namespace.Name, name), ApplyOptions)
+		Apply(test.Ctx(), DeploymentConfiguration(namespace.Name, name), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
-	// Create the root Service
+	// Create the Service
 	_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).CoreV1().Services(namespace.Name).
-		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name, map[string]string{}), ApplyOptions)
+		Apply(test.Ctx(), ServiceConfiguration(namespace.Name, name, map[string]string{}), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
-	// Create the root Ingress
+	// Create the Ingress
 	_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).NetworkingV1().Ingresses(namespace.Name).
-		Apply(test.Ctx(), ingressConfiguration(namespace.Name, name), ApplyOptions)
+		Apply(test.Ctx(), IngressConfiguration(namespace.Name, name), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
-	// Wait until the root Ingress is reconciled with the load balancer Ingresses
+	// Wait until the Ingress is reconciled with the load balancer Ingresses
 	test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(And(
 		WithTransform(Annotations, And(
 			HaveKey(kuadrantcluster.ANNOTATION_HCG_HOST),
@@ -89,13 +89,13 @@ func TestIngress(t *testing.T) {
 		Satisfy(HostsEqualsToGeneratedHost),
 	))
 
-	// Retrieve the root Ingress
+	// Retrieve the Ingress
 	ingress := GetIngress(test, namespace, name)
 
-	// Check a DNSRecord for the root Ingress is created with the expected Spec
+	// Check a DNSRecord for the Ingress is created with the expected Spec
 	test.Eventually(DNSRecord(test, namespace, name)).Should(And(
 		WithTransform(DNSRecordEndpoints, HaveLen(1)),
-		WithTransform(DNSRecordEndpoints, ContainElement(PointTo(MatchFields(IgnoreExtras,
+		WithTransform(DNSRecordEndpoints, ContainElement(MatchFieldsP(IgnoreExtras,
 			Fields{
 				"DNSName":          Equal(ingress.Annotations[kuadrantcluster.ANNOTATION_HCG_HOST]),
 				"Targets":          ConsistOf(ingress.Status.LoadBalancer.Ingress[0].IP),
@@ -104,7 +104,7 @@ func TestIngress(t *testing.T) {
 				"SetIdentifier":    Equal(ingress.Status.LoadBalancer.Ingress[0].IP),
 				"ProviderSpecific": ConsistOf(kuadrantv1.ProviderSpecific{{Name: "aws/weight", Value: "120"}}),
 			})),
-		)),
+		),
 	))
 
 	// Register workload cluster 2 into the test workspace
@@ -116,24 +116,24 @@ func TestIngress(t *testing.T) {
 		Equal(corev1.ConditionTrue),
 	))
 
-	// update the namespace with the second cluster placement
+	// Update the namespace with the second cluster placement
 	_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).CoreV1().Namespaces().Apply(test.Ctx(), corev1apply.Namespace(namespace.Name).WithLabels(map[string]string{kcp.ClusterLabel: cluster2.Name}), ApplyOptions)
 
 	test.Expect(err).NotTo(HaveOccurred())
-	// Wait until the root Ingress is reconciled with the load balancer Ingresses
+	// Wait until the Ingress is reconciled with the load balancer Ingresses
 	test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(And(
 		WithTransform(Annotations, HaveKey(kuadrantcluster.ANNOTATION_HCG_HOST)),
 		WithTransform(LoadBalancerIngresses, HaveLen(1)),
 		WithTransform(Labels, HaveKeyWithValue(kcp.ClusterLabel, cluster2.Name)),
 	))
 
-	// Retrieve the root Ingress
+	// Retrieve the Ingress
 	ingress = GetIngress(test, namespace, name)
 
-	// Check a DNSRecord for the root Ingress is updated with the expected Spec
+	// Check a DNSRecord for the Ingress is updated with the expected Spec
 	test.Eventually(DNSRecord(test, namespace, name)).Should(And(
 		WithTransform(DNSRecordEndpoints, HaveLen(1)),
-		WithTransform(DNSRecordEndpoints, ContainElement(PointTo(MatchFields(IgnoreExtras,
+		WithTransform(DNSRecordEndpoints, ContainElement(MatchFieldsP(IgnoreExtras,
 			Fields{
 				"DNSName":          Equal(ingress.Annotations[kuadrantcluster.ANNOTATION_HCG_HOST]),
 				"Targets":          ConsistOf(ingress.Status.LoadBalancer.Ingress[0].IP),
@@ -142,10 +142,10 @@ func TestIngress(t *testing.T) {
 				"SetIdentifier":    Equal(ingress.Status.LoadBalancer.Ingress[0].IP),
 				"ProviderSpecific": ConsistOf(kuadrantv1.ProviderSpecific{{Name: "aws/weight", Value: "120"}}),
 			})),
-		)),
+		),
 	))
 
-	// Finally, delete the root resources
+	// Finally, delete the resources
 	test.Expect(test.Client().Core().Cluster(logicalcluster.From(namespace)).NetworkingV1().Ingresses(namespace.Name).
 		Delete(test.Ctx(), name, metav1.DeleteOptions{})).
 		To(Succeed())

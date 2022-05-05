@@ -78,22 +78,22 @@ func TestTLS(t *testing.T) {
 
 	name := "echo"
 
-	// Create the root Deployment
+	// Create the Deployment
 	_, err := test.Client().Core().Cluster(logicalcluster.From(namespace)).AppsV1().Deployments(namespace.Name).
-		Apply(test.Ctx(), deploymentConfiguration(namespace.Name, name), ApplyOptions)
+		Apply(test.Ctx(), DeploymentConfiguration(namespace.Name, name), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
-	// Create the root Service
+	// Create the Service
 	_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).CoreV1().Services(namespace.Name).
-		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name, map[string]string{}), ApplyOptions)
+		Apply(test.Ctx(), ServiceConfiguration(namespace.Name, name, map[string]string{}), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
-	// Create the root Ingress
+	// Create the Ingress
 	_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).NetworkingV1().Ingresses(namespace.Name).
-		Apply(test.Ctx(), ingressConfiguration(namespace.Name, name), ApplyOptions)
+		Apply(test.Ctx(), IngressConfiguration(namespace.Name, name), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
-	// Wait until the root Ingress is reconciled with the load balancer Ingresses
+	// Wait until the Ingress is reconciled with the load balancer Ingresses
 	test.Eventually(Ingress(test, namespace, name)).WithTimeout(TestTimeoutMedium).Should(And(
 		WithTransform(Annotations, And(
 			HaveKey(kuadrantcluster.ANNOTATION_HCG_HOST),
@@ -107,6 +107,7 @@ func TestTLS(t *testing.T) {
 	ingress := GetIngress(test, namespace, name)
 	hostname := ingress.Annotations[kuadrantcluster.ANNOTATION_HCG_HOST]
 	context, err := kuadrantcluster.NewControlObjectMapper(ingress)
+	test.Expect(err).NotTo(HaveOccurred())
 
 	// Check the Ingress TLS spec
 	test.Expect(ingress).To(WithTransform(IngressTLS, ConsistOf(

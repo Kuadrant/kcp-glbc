@@ -14,6 +14,8 @@ require (
 	github.com/miekg/dns v1.1.34
 	github.com/onsi/gomega v1.17.0
 	github.com/prometheus/client_golang v1.11.0
+	github.com/prometheus/client_model v0.2.0
+	github.com/prometheus/common v0.28.0
 	github.com/rs/xid v1.3.0
 	go.uber.org/zap v1.19.1
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c

@@ -6,9 +6,6 @@ package support
 import (
 	"time"
 
-	"github.com/onsi/gomega"
-	"github.com/onsi/gomega/format"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
@@ -26,10 +23,3 @@ var (
 	TestOrganization = tenancyv1alpha1.RootCluster.Join("default")
 	ApplyOptions     = metav1.ApplyOptions{FieldManager: "kcp-glbc-e2e", Force: true}
 )
-
-func init() {
-	// Gomega settings
-	gomega.SetDefaultEventuallyTimeout(TestTimeoutShort)
-	// Disable object truncation on test results
-	format.MaxLength = 0
-}
