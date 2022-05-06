@@ -151,8 +151,7 @@ ifeq ($(DO_BREW),true)
 endif
 
 .PHONY: local-setup
-local-setup: export KCP_VERSION=${KCP_BRANCH}
-local-setup: clean kind kcp build ## Setup kcp locally using kind.
+local-setup: clean kind kcp kustomize build ## Setup kcp locally using kind.
 	./utils/local-setup.sh -c ${NUM_CLUSTERS} ${LOCAL_SETUP_FLAGS}
 
 ##@ Build Dependencies
