@@ -1,0 +1,49 @@
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  namespace: istio-system
+  name: istiocontrolplane
+spec:
+  profile: openshift
+  namespace: istio-system
+  components:
+    base:
+      enabled: true
+    cni:
+      enabled: true
+      k8s:
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+          fsGroup: 0
+    egressGateways:
+      - enabled: false
+        name: istio-egressgateway
+        k8s:
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            fsGroup: 0
+    ingressGateways:
+      - enabled: false
+        name: istio-ingressgateway
+        k8s:
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            fsGroup: 0
+    pilot:
+      enabled: true
+      k8s:
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+          fsGroup: 0
+        env:
+          - name: ENABLE_LEGACY_FSGROUP_INJECTION
+            value: "false"
+  values:
+    pilot:
+      autoscaleEnabled: false
+    global:
+      istioNamespace: istio-system

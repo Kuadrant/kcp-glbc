@@ -1,0 +1,9 @@
+apiVersion: apis.kcp.dev/v1alpha1
+kind: APIBinding
+metadata:
+  name: apigateway-import
+spec:
+  reference:
+    workspace:
+      name: apigateway
+      exportName: apigateway

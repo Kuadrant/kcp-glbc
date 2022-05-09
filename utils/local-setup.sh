@@ -114,16 +114,26 @@ EOF
   VERSION=$(curl https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/stable.txt)
   curl https://raw.githubusercontent.com/kubernetes/ingress-nginx/"${VERSION}"/deploy/static/provider/kind/deploy.yaml | sed "s/--publish-status-address=localhost/--report-node-internal-ip-address/g" | kubectl apply -f -
   kubectl annotate ingressclass nginx "ingressclass.kubernetes.io/is-default-class=true"
+  } &> /dev/null
 
-  } &>/dev/null
 }
 
 createKCPWorkloadCluster() {
   createCluster $1 $2 $3
+  resourcesToSync="ingresses.networking.k8s.io,services,gateways.gateway.networking.k8s.io,gateways.networking.istio.io,httproutes.gateway.networking.k8s.io,referencepolicies.gateway.networking.k8s.io,serviceentries.networking.istio.io,tcproutes.gateway.networking.k8s.io,tlsroutes.gateway.networking.k8s.io,udproutes.gateway.networking.k8s.io"
   echo "Deploying kcp syncer to ${1}"
-  KUBECONFIG=.kcp/admin.kubeconfig ${KUBECTL_KCP_BIN} workload sync $1 --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services > ${TEMP_DIR}/${1}-syncer.yaml
+  KUBECONFIG=.kcp/admin.kubeconfig ${KUBECTL_KCP_BIN} workload sync $1 --syncer-image=${KCP_SYNCER_IMAGE} --resources=${resourcesToSync} > ${TEMP_DIR}/${1}-syncer.yaml
   kubectl config use-context kind-${1}
   kubectl apply -f ${TEMP_DIR}/${1}-syncer.yaml
+
+  # install istio-operator and istiod
+  kubectl create namespace istio-system
+  istioctl operator init
+  kubectl kustomize "github.com/kubernetes-sigs/gateway-api/config/crd?ref=v0.4.0" | kubectl apply -f -
+  kubectl  apply -f ${SCRIPT_DIR}/kcp-contrib/gatewayapi/istio-controlplane-without-ingress.yaml
+
+  # connect istio gateway to Gateway API
+#  kubectl apply -f ${SCRIPT_DIR}/kcp-contrib/gatewayapi/gatewayapi.yaml
 }
 
 createGLBCCluster() {
@@ -143,6 +153,19 @@ createKCPWorkspace() {
   kubectl --kubeconfig=.kcp/admin.kubeconfig apply -f ./config/crd/bases
   kubectl --kubeconfig=.kcp/admin.kubeconfig apply -f ./utils/kcp-contrib/apiresourceschema.yaml
   kubectl --kubeconfig=.kcp/admin.kubeconfig apply -f ./utils/kcp-contrib/apiexport.yaml
+
+  echo "creating apigateway workspace"
+  # create apigateway workspace and CRDs
+  KUBECONFIG=.kcp/admin.kubeconfig ${KUBECTL_KCP_BIN} workspace root:default
+  KUBECONFIG=.kcp/admin.kubeconfig ${KUBECTL_KCP_BIN} workspace create apigateway --enter
+  echo "creating apigateway resources"
+  kubectl --kubeconfig=.kcp/admin.kubeconfig create -f ${SCRIPT_DIR}/kcp-contrib/gatewayapi/gatewayapi-resources.yaml
+  echo "creating apigateway resources export"
+  kubectl --kubeconfig=.kcp/admin.kubeconfig create -f ${SCRIPT_DIR}/kcp-contrib/gatewayapi/gatewayapi-export.yaml
+
+  #import gateway APIs into default workspace
+  KUBECONFIG=.kcp/admin.kubeconfig ${KUBECTL_KCP_BIN} workspace root:default:kcp-glbc
+  kubectl --kubeconfig=.kcp/admin.kubeconfig create -f ${SCRIPT_DIR}/kcp-contrib/gatewayapi/gatewayapi-binding.yaml
 }
 
 #Delete existing kind clusters

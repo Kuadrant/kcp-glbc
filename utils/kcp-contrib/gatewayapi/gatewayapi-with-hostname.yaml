@@ -1,0 +1,25 @@
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: Gateway
+metadata:
+  generation: 1
+  labels:
+    istio: istio-system
+  name: gatewayapi-ingressgateway
+spec:
+  addresses:
+    - type: Hostname
+      value: istio-ingressgateway.istio-system.svc.cluster.local
+  gatewayClassName: istio
+  listeners:
+    - allowedRoutes:
+        namespaces:
+          from: All
+      name: default
+      port: 80
+      protocol: HTTP
+    - allowedRoutes:
+        namespaces:
+          from: All
+      name: default-tls
+      port: 443
+      protocol: HTTPS
