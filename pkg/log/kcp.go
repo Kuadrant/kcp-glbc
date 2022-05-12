@@ -34,7 +34,7 @@ type KcpAwareEncoder struct {
 	// Encoder is the zapcore.Encoder that this encoder delegates to
 	zapcore.Encoder
 
-	// Verbose controls whether or not the full object is printed.
+	// Verbose controls whether the full object is printed.
 	// If false, only name, namespace, api version, and kind are printed.
 	// Otherwise, the full object is logged.
 	Verbose bool

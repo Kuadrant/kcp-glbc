@@ -20,7 +20,6 @@ import (
 	"flag"
 	"io"
 	"os"
-	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
@@ -44,15 +43,6 @@ func New(opts ...Opts) logr.Logger {
 
 // Opts allows to manipulate Options.
 type Opts func(*Options)
-
-// UseDevMode sets the logger to use (or not use) development mode (more
-// human-readable output, extra stack traces and logging information, etc).
-// See Options.Development.
-func UseDevMode(enabled bool) Opts {
-	return func(o *Options) {
-		o.Development = enabled
-	}
-}
 
 // WriteTo configures the logger to write to the given io.Writer, instead of standard error.
 // See Options.DestWriter.
@@ -98,10 +88,6 @@ func Level(level zapcore.LevelEnabler) func(o *Options) {
 
 // Options contains all possible settings.
 type Options struct {
-	// Development configures the logger to use a Zap development config
-	// (stacktraces on warnings, no sampling), otherwise a Zap production
-	// config will be used (stacktraces on errors, sampling).
-	Development bool
 	// Encoder configures how Zap will encode the output.  Defaults to
 	// console when Development is true and JSON otherwise
 	Encoder zapcore.Encoder
@@ -137,40 +123,16 @@ func (o *Options) addDefaults() {
 	if o.DestWriter == nil {
 		o.DestWriter = os.Stderr
 	}
-
-	if o.Development {
-		if o.NewEncoder == nil {
-			o.NewEncoder = newConsoleEncoder
-		}
-		if o.Level == nil {
-			lvl := zap.NewAtomicLevelAt(zap.DebugLevel)
-			o.Level = &lvl
-		}
-		if o.StacktraceLevel == nil {
-			lvl := zap.NewAtomicLevelAt(zap.WarnLevel)
-			o.StacktraceLevel = &lvl
-		}
-		o.ZapOpts = append(o.ZapOpts, zap.Development())
-	} else {
-		if o.NewEncoder == nil {
-			o.NewEncoder = newJSONEncoder
-		}
-		if o.Level == nil {
-			lvl := zap.NewAtomicLevelAt(zap.InfoLevel)
-			o.Level = &lvl
-		}
-		if o.StacktraceLevel == nil {
-			lvl := zap.NewAtomicLevelAt(zap.ErrorLevel)
-			o.StacktraceLevel = &lvl
-		}
-		// Disable sampling for increased Debug levels. Otherwise, this will
-		// cause index out of bounds errors in the sampling code.
-		if !o.Level.Enabled(zapcore.Level(-2)) {
-			o.ZapOpts = append(o.ZapOpts,
-				zap.WrapCore(func(core zapcore.Core) zapcore.Core {
-					return zapcore.NewSamplerWithOptions(core, time.Second, 100, 100)
-				}))
-		}
+	if o.NewEncoder == nil {
+		o.NewEncoder = newConsoleEncoder
+	}
+	if o.Level == nil {
+		lvl := zap.NewAtomicLevelAt(zap.InfoLevel)
+		o.Level = &lvl
+	}
+	if o.StacktraceLevel == nil {
+		lvl := zap.NewAtomicLevelAt(zap.PanicLevel)
+		o.StacktraceLevel = &lvl
 	}
 	if o.Encoder == nil {
 		o.Encoder = o.NewEncoder(o.EncoderConfigOptions...)
@@ -192,24 +154,17 @@ func NewRaw(opts ...Opts) *zap.Logger {
 	sink := zapcore.AddSync(o.DestWriter)
 
 	o.ZapOpts = append(o.ZapOpts, zap.AddCallerSkip(1), zap.ErrorOutput(sink))
-	log := zap.New(zapcore.NewCore(&KcpAwareEncoder{Encoder: o.Encoder, Verbose: o.Development}, sink, o.Level))
+	log := zap.New(zapcore.NewCore(&KcpAwareEncoder{Encoder: o.Encoder, Verbose: false}, sink, o.Level))
 	log = log.WithOptions(o.ZapOpts...)
 	return log
 }
 
 // BindFlags will parse the given flagset for zap option flags and set the log options accordingly
-//  zap-devel: Development Mode defaults(encoder=consoleEncoder,logLevel=Debug,stackTraceLevel=Warn)
-//			  Production Mode defaults(encoder=jsonEncoder,logLevel=Info,stackTraceLevel=Error)
 //  zap-encoder: Zap log encoding (one of 'json' or 'console')
 //  zap-log-level:  Zap Level to configure the verbosity of logging. Can be one of 'debug', 'info', 'error',
 //			       or any integer value > 0 which corresponds to custom debug levels of increasing verbosity")
 //  zap-stacktrace-level: Zap Level at and above which stacktraces are captured (one of 'info', 'error' or 'panic')
 func (o *Options) BindFlags(fs *flag.FlagSet) {
-	// Set Development mode value
-	fs.BoolVar(&o.Development, "zap-devel", o.Development,
-		"Development Mode defaults(encoder=consoleEncoder,logLevel=Debug,stackTraceLevel=Warn). "+
-			"Production Mode defaults(encoder=jsonEncoder,logLevel=Info,stackTraceLevel=Error)")
-
 	// Set Encoder value
 	var encVal encoderFlag
 	encVal.setFunc = func(fromFlag NewEncoderFunc) {
@@ -226,7 +181,7 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 		"Zap Level to configure the verbosity of logging. Can be one of 'debug', 'info', 'error', "+
 			"or any integer value > 0 which corresponds to custom debug levels of increasing verbosity")
 
-	// Set the StrackTrace Level
+	// Set the StackTrace Level
 	var stackVal stackTraceFlag
 	stackVal.setFunc = func(fromFlag zapcore.LevelEnabler) {
 		o.StacktraceLevel = fromFlag

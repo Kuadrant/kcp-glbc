@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
 	// Make sure our workqueue MetricsProvider is the first to register
@@ -88,7 +90,16 @@ func init() {
 	//  Observability options
 	flagSet.IntVar(&options.MonitoringPort, "monitoring-port", 8080, "The port of the metrics endpoint (can be set to \"0\" to disable the metrics serving)")
 
-	opts := log.Options{}
+	opts := log.Options{
+		EncoderConfigOptions: []log.EncoderConfigOption{
+			func(c *zapcore.EncoderConfig) {
+				c.ConsoleSeparator = " "
+			},
+		},
+		ZapOpts: []zap.Option{
+			zap.AddCaller(),
+		},
+	}
 	opts.BindFlags(flag.CommandLine)
 	klog.InitFlags(flag.CommandLine)
 	flag.Parse()
