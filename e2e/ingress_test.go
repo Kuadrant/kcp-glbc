@@ -44,7 +44,7 @@ func TestIngress(t *testing.T) {
 		Should(BeTrue())
 
 	// Register workload cluster 1 into the test workspace
-	cluster1 := test.NewWorkloadCluster(workspace, "kcp-cluster-1")
+	cluster1 := test.NewWorkloadCluster("kcp-cluster-1", InWorkspace(workspace), WithKubeConfigByName, Syncer().ResourcesToSync(GLBCResources...))
 
 	// Wait until cluster 1 is ready
 	test.Eventually(WorkloadCluster(test, cluster1.ClusterName, cluster1.Name)).WithTimeout(time.Minute * 3).Should(WithTransform(
@@ -66,17 +66,17 @@ func TestIngress(t *testing.T) {
 
 	// Create the root Deployment
 	_, err := test.Client().Core().Cluster(logicalcluster.From(namespace)).AppsV1().Deployments(namespace.Name).
-		Apply(test.Ctx(), deploymentConfiguration(namespace.Name, name), applyOptions)
+		Apply(test.Ctx(), deploymentConfiguration(namespace.Name, name), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
 	// Create the root Service
 	_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).CoreV1().Services(namespace.Name).
-		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name, map[string]string{}), applyOptions)
+		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name, map[string]string{}), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
 	// Create the root Ingress
 	_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).NetworkingV1().Ingresses(namespace.Name).
-		Apply(test.Ctx(), ingressConfiguration(namespace.Name, name), applyOptions)
+		Apply(test.Ctx(), ingressConfiguration(namespace.Name, name), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
 	// Wait until the root Ingress is reconciled with the load balancer Ingresses
@@ -108,7 +108,7 @@ func TestIngress(t *testing.T) {
 	))
 
 	// Register workload cluster 2 into the test workspace
-	cluster2 := test.NewWorkloadCluster(workspace, "kcp-cluster-2")
+	cluster2 := test.NewWorkloadCluster("kcp-cluster-2", InWorkspace(workspace), WithKubeConfigByName, Syncer().ResourcesToSync(GLBCResources...))
 
 	// Wait until cluster 2 is ready
 	test.Eventually(WorkloadCluster(test, cluster2.ClusterName, cluster2.Name)).WithTimeout(time.Minute * 3).Should(WithTransform(
@@ -117,7 +117,7 @@ func TestIngress(t *testing.T) {
 	))
 
 	// update the namespace with the second cluster placement
-	_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).CoreV1().Namespaces().Apply(test.Ctx(), corev1apply.Namespace(namespace.Name).WithLabels(map[string]string{kcp.ClusterLabel: cluster2.Name}), applyOptions)
+	_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).CoreV1().Namespaces().Apply(test.Ctx(), corev1apply.Namespace(namespace.Name).WithLabels(map[string]string{kcp.ClusterLabel: cluster2.Name}), ApplyOptions)
 
 	test.Expect(err).NotTo(HaveOccurred())
 	// Wait until the root Ingress is reconciled with the load balancer Ingresses

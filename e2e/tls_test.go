@@ -33,6 +33,7 @@ import (
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	apisv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/apis/v1alpha1"
 	conditionsapi "github.com/kcp-dev/kcp/third_party/conditions/apis/conditions/v1alpha1"
+
 	. "github.com/kuadrant/kcp-glbc/e2e/support"
 	kuadrantv1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
 	kuadrantcluster "github.com/kuadrant/kcp-glbc/pkg/cluster"
@@ -57,7 +58,7 @@ func TestTLS(t *testing.T) {
 		Should(BeTrue())
 
 	// Register workload cluster 1 into the test workspace
-	cluster1 := test.NewWorkloadCluster(workspace, "kcp-cluster-1")
+	cluster1 := test.NewWorkloadCluster("kcp-cluster-1", InWorkspace(workspace), WithKubeConfigByName, Syncer().ResourcesToSync(GLBCResources...))
 
 	// Wait until cluster 1 is ready
 	test.Eventually(WorkloadCluster(test, cluster1.ClusterName, cluster1.Name)).WithTimeout(time.Minute * 3).Should(WithTransform(
@@ -79,17 +80,17 @@ func TestTLS(t *testing.T) {
 
 	// Create the root Deployment
 	_, err := test.Client().Core().Cluster(logicalcluster.From(namespace)).AppsV1().Deployments(namespace.Name).
-		Apply(test.Ctx(), deploymentConfiguration(namespace.Name, name), applyOptions)
+		Apply(test.Ctx(), deploymentConfiguration(namespace.Name, name), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
 	// Create the root Service
 	_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).CoreV1().Services(namespace.Name).
-		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name, map[string]string{}), applyOptions)
+		Apply(test.Ctx(), serviceConfiguration(namespace.Name, name, map[string]string{}), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
 	// Create the root Ingress
 	_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).NetworkingV1().Ingresses(namespace.Name).
-		Apply(test.Ctx(), ingressConfiguration(namespace.Name, name), applyOptions)
+		Apply(test.Ctx(), ingressConfiguration(namespace.Name, name), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
 	// Wait until the root Ingress is reconciled with the load balancer Ingresses

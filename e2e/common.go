@@ -20,15 +20,12 @@ package e2e
 import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	appsv1apply "k8s.io/client-go/applyconfigurations/apps/v1"
 	corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
 	v1apply "k8s.io/client-go/applyconfigurations/meta/v1"
 	networkingv1apply "k8s.io/client-go/applyconfigurations/networking/v1"
 )
-
-var applyOptions = metav1.ApplyOptions{FieldManager: "kcp-glbc-e2e", Force: true}
 
 func ingressConfiguration(namespace, name string) *networkingv1apply.IngressApplyConfiguration {
 	return networkingv1apply.Ingress(name, namespace).WithSpec(

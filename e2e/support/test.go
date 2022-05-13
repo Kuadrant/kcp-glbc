@@ -11,7 +11,6 @@ import (
 	"github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	apisv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/apis/v1alpha1"
 	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
@@ -28,11 +27,11 @@ type Test interface {
 	NewTestWorkspace() *tenancyv1alpha1.ClusterWorkspace
 	NewGLBCAPIBinding(...Option) *apisv1alpha1.APIBinding
 	NewTestNamespace(...Option) *corev1.Namespace
-	NewWorkloadCluster(workspace *tenancyv1alpha1.ClusterWorkspace, name string) *workloadv1alpha1.WorkloadCluster
+	NewWorkloadCluster(name string, options ...Option) *workloadv1alpha1.WorkloadCluster
 }
 
 type Option interface {
-	applyTo(metav1.Object) error
+	applyTo(interface{}) error
 }
 
 func With(t *testing.T) Test {
@@ -101,6 +100,6 @@ func (t *T) NewTestNamespace(options ...Option) *corev1.Namespace {
 	return namespace
 }
 
-func (t *T) NewWorkloadCluster(workspace *tenancyv1alpha1.ClusterWorkspace, name string) *workloadv1alpha1.WorkloadCluster {
-	return createWorkloadCluster(t, workspace, name)
+func (t *T) NewWorkloadCluster(name string, options ...Option) *workloadv1alpha1.WorkloadCluster {
+	return createWorkloadCluster(t, name, options...)
 }
