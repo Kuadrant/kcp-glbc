@@ -95,7 +95,7 @@ func (c *Controller) ensureMirrored(ctx context.Context, kctx cluster.ObjectMapp
 	}
 	// using the KCP client here to target the KCP cluster
 	secretClient := c.kcpKubeClient.Cluster(logicalcluster.New(kctx.Workspace())).CoreV1().Secrets(kctx.Namespace())
-	_, err := secretClient.Create(ctx, mirror, metav1.CreateOptions{})
+	mirrored, err := secretClient.Create(ctx, mirror, metav1.CreateOptions{})
 	if err != nil {
 		if !k8errors.IsAlreadyExists(err) {
 			return err
@@ -124,15 +124,14 @@ func (c *Controller) ensureMirrored(ctx context.Context, kctx cluster.ObjectMapp
 		if _, err := ingressClient.Update(ctx, rootIngress, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
-		c.observeCertificateIssuanceDuration(kctx, secret)
+		c.observeCertificateIssuanceDuration(kctx, mirrored.CreationTimestamp, secret.Annotations[tlsIssuerAnnotation])
 	}
 
 	return nil
 }
 
-func (c *Controller) observeCertificateIssuanceDuration(kctx cluster.ObjectMapper, secret *v1.Secret) {
+func (c *Controller) observeCertificateIssuanceDuration(kctx cluster.ObjectMapper, creationTimestamp metav1.Time, issuer string) {
 	// FIXME: refactor the certificate management so that metrics reflect actual state transitions rather than client requests, and so that it's possible to observe issuance errors
-	issuer := secret.Annotations[tlsIssuerAnnotation]
 	hostname := kctx.Host()
 	// The certificate request has successfully completed
 	tlsCertificateRequestTotal.WithLabelValues(issuer, hostname, resultLabelSucceeded).Inc()
@@ -141,5 +140,5 @@ func (c *Controller) observeCertificateIssuanceDuration(kctx cluster.ObjectMappe
 
 	tlsCertificateIssuanceDuration.
 		WithLabelValues(issuer, hostname, resultLabelSucceeded).
-		Observe(secret.CreationTimestamp.Sub(kctx.CreationTimestamp().Time).Seconds())
+		Observe(creationTimestamp.Sub(kctx.CreationTimestamp().Time).Seconds())
 }
