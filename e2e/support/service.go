@@ -13,6 +13,7 @@ import (
 )
 
 func GetServices(t Test, namespace *corev1.Namespace, labelSelector string) []corev1.Service {
+	t.T().Helper()
 	return Services(t, namespace, labelSelector)(t)
 }
 

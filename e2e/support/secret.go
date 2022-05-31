@@ -29,6 +29,7 @@ import (
 )
 
 func GetSecret(t Test, namespace *corev1.Namespace, name string) *corev1.Secret {
+	t.T().Helper()
 	return Secret(t, namespace, name)(t)
 }
 

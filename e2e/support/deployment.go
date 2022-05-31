@@ -14,6 +14,7 @@ import (
 )
 
 func GetDeployments(t Test, namespace *corev1.Namespace, labelSelector string) []appsv1.Deployment {
+	t.T().Helper()
 	return Deployments(t, namespace, labelSelector)(t)
 }
 

@@ -30,6 +30,7 @@ import (
 )
 
 func GetIngress(t Test, namespace *corev1.Namespace, name string) *networkingv1.Ingress {
+	t.T().Helper()
 	return Ingress(t, namespace, name)(t)
 }
 
@@ -42,6 +43,7 @@ func Ingress(t Test, namespace *corev1.Namespace, name string) func(g gomega.Gom
 }
 
 func GetIngresses(t Test, namespace *corev1.Namespace, labelSelector string) []networkingv1.Ingress {
+	t.T().Helper()
 	return Ingresses(t, namespace, labelSelector)(t)
 }
 

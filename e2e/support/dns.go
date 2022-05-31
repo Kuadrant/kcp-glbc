@@ -15,6 +15,7 @@ import (
 )
 
 func GetDNSRecord(t Test, namespace *corev1.Namespace, name string) *kuadrantv1.DNSRecord {
+	t.T().Helper()
 	return DNSRecord(t, namespace, name)(t)
 }
 
