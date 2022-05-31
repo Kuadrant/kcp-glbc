@@ -38,6 +38,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
@@ -99,10 +100,17 @@ func TestMetrics(t *testing.T) {
 		Apply(test.Ctx(), ServiceConfiguration(namespace.Name, name, map[string]string{}), ApplyOptions)
 	test.Expect(err).NotTo(HaveOccurred())
 
-	// Create the Ingress
-	_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).NetworkingV1().Ingresses(namespace.Name).
-		Apply(test.Ctx(), IngressConfiguration(namespace.Name, name), ApplyOptions)
-	test.Expect(err).NotTo(HaveOccurred())
+	// Create the Ingress, it's delayed and run in a separate Go routine, to mitigate the race
+	// where cert-manager is being too prompt to issue the TLS certificate (which turns out to be quick fast
+	// when using a CA issuer), and the below assertion happens too late to detect the pending TLS certificate request.
+	timer := time.AfterFunc(2*time.Second, func() {
+		_, err = test.Client().Core().Cluster(logicalcluster.From(namespace)).NetworkingV1().Ingresses(namespace.Name).
+			Apply(test.Ctx(), IngressConfiguration(namespace.Name, name), ApplyOptions)
+		test.Expect(err).NotTo(HaveOccurred())
+	})
+	t.Cleanup(func() {
+		timer.Stop()
+	})
 
 	hostname := ""
 
@@ -114,6 +122,9 @@ func TestMetrics(t *testing.T) {
 			func(m *prometheus.MetricFamily) bool {
 				ingress, err := test.Client().Core().Cluster(logicalcluster.From(namespace)).NetworkingV1().Ingresses(namespace.Name).Get(test.Ctx(), name, metav1.GetOptions{})
 				if err != nil {
+					if apierrors.IsNotFound(err) {
+						return false
+					}
 					t.Fatal(err)
 				}
 				hostname = ingress.Annotations[kuadrantcluster.ANNOTATION_HCG_HOST]
