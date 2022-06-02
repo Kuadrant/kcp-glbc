@@ -332,6 +332,17 @@ func TestMetrics(t *testing.T) {
 		)),
 	))
 
+	// Take a snapshot of the reconciliation metrics
+	metrics, err = getMetrics(test.Ctx())
+	test.Expect(err).NotTo(HaveOccurred())
+	reconcileTotal := metrics["glbc_controller_reconcile_total"]
+
+	// And check no reconciliation occurred over a reasonable period of time
+	test.Consistently(Metrics(test.Ctx()), 30*time.Second).Should(And(
+		HaveKey("glbc_controller_reconcile_total"),
+		WithTransform(Metric("glbc_controller_reconcile_total"), Equal(reconcileTotal)),
+	))
+
 	// Finally, delete the Ingress and assert the metrics to cover the entire lifecycle
 	test.Expect(test.Client().Core().Cluster(logicalcluster.From(namespace)).NetworkingV1().Ingresses(namespace.Name).
 		Delete(test.Ctx(), name, metav1.DeleteOptions{})).
