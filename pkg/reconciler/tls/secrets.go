@@ -22,12 +22,12 @@ const (
 func (c *Controller) reconcile(ctx context.Context, secret *v1.Secret) error {
 	// create our context to avoid repeatedly pulling out annotations etc
 	kcpCtx, err := cluster.NewKCPObjectMapper(secret)
-	// TODO: use label selector in the controller to filter Secrets out
-	if err != nil && cluster.IsNoContextErr(err) {
-		// ignore this secret
-		return nil
-	}
 	if err != nil {
+		// TODO: use label selector in the controller to filter Secrets out
+		if cluster.IsNoContextErr(err) {
+			// ignore this secret
+			return nil
+		}
 		return err
 	}
 
@@ -36,24 +36,37 @@ func (c *Controller) reconcile(ctx context.Context, secret *v1.Secret) error {
 		if err := c.ensureDelete(ctx, kcpCtx, secret); err != nil {
 			return err
 		}
-		// remove finalizer from the control cluster secret so it can be cleaned up
+		// remove finalizer from the Secret, so it can be cleaned up
 		removeFinalizer(secret, secretsFinalizer)
 		if _, err = c.glbcKubeClient.CoreV1().Secrets(secret.Namespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil && !k8errors.IsNotFound(err) {
 			return err
 		}
 		return nil
 	}
-	AddFinalizer(secret, secretsFinalizer)
-	secret, err = c.glbcKubeClient.CoreV1().Secrets(secret.Namespace).Update(ctx, secret, metav1.UpdateOptions{})
-	if err != nil {
-		return err
+
+	if !containsFinalizer(secret, secretsFinalizer) {
+		addFinalizer(secret, secretsFinalizer)
+		secret, err = c.glbcKubeClient.CoreV1().Secrets(secret.Namespace).Update(ctx, secret, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
 	}
+
 	if err := c.ensureMirrored(ctx, kcpCtx, secret); err != nil {
 		c.Logger.Error(err, "Failed to mirror Secret", "secret", secret)
 		return err
 	}
 
 	return nil
+}
+
+func containsFinalizer(secret *v1.Secret, finalizer string) bool {
+	for _, f := range secret.Finalizers {
+		if f == finalizer {
+			return true
+		}
+	}
+	return false
 }
 
 func removeFinalizer(secret *v1.Secret, finalizer string) {
@@ -66,7 +79,7 @@ func removeFinalizer(secret *v1.Secret, finalizer string) {
 	}
 }
 
-func AddFinalizer(secret *v1.Secret, finalizer string) {
+func addFinalizer(secret *v1.Secret, finalizer string) {
 	for _, v := range secret.Finalizers {
 		if v == finalizer {
 			return
