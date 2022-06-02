@@ -1,0 +1,7 @@
+apiVersion: apis.kcp.dev/v1alpha1
+kind: APIExport
+metadata:
+  name: apigateway
+spec:
+  latestResourceSchemas:
+    - latest.referencepolicies.gateway.networking.k8s.io
