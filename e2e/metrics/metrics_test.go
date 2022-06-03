@@ -18,12 +18,8 @@ limitations under the License.
 package metrics
 
 import (
-	"bytes"
-	"context"
 	"fmt"
-	"io"
 	"math"
-	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -34,7 +30,6 @@ import (
 	"github.com/onsi/gomega/types"
 
 	prometheus "github.com/prometheus/client_model/go"
-	"github.com/prometheus/common/expfmt"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -55,6 +50,47 @@ const issuer = "glbc-ca"
 
 func TestMetrics(t *testing.T) {
 	test := With(t)
+
+	// Assert the metrics are initialized
+	test.Expect(GetMetrics(test)).To(And(
+		HaveKey("glbc_ingress_managed_object_total"),
+		WithTransform(Metric("glbc_ingress_managed_object_total"), EqualP(
+			ingressManagedObjectTotal(0),
+		)),
+		// glbc_ingress_managed_object_time_to_admission
+		HaveKey("glbc_ingress_managed_object_time_to_admission"),
+		WithTransform(Metric("glbc_ingress_managed_object_time_to_admission"), EqualP(
+			ingressManagedObjectTimeToAdmission(0, 0),
+		)),
+		// glbc_tls_certificate_pending_request_count
+		HaveKey("glbc_tls_certificate_pending_request_count"),
+		WithTransform(Metric("glbc_tls_certificate_pending_request_count"), EqualP(
+			certificatePendingRequestCount(issuer, 0),
+		)),
+		// glbc_tls_certificate_request_total
+		HaveKey("glbc_tls_certificate_request_total"),
+		WithTransform(Metric("glbc_tls_certificate_request_total"), EqualP(
+			certificateRequestTotal(issuer, 0, 0),
+		)),
+		// glbc_tls_certificate_request_errors_total
+		HaveKey("glbc_tls_certificate_request_errors_total"),
+		WithTransform(Metric("glbc_tls_certificate_request_errors_total"), EqualP(
+			certificateRequestErrorsTotal(issuer, 0),
+		)),
+		// glbc_tls_certificate_secret_count
+		HaveKey("glbc_tls_certificate_secret_count"),
+		WithTransform(Metric("glbc_tls_certificate_secret_count"), MatchFieldsP(IgnoreExtras,
+			Fields{
+				"Name":   EqualP("glbc_tls_certificate_secret_count"),
+				"Help":   EqualP("GLBC TLS certificate secret count"),
+				"Type":   EqualP(prometheus.MetricType_GAUGE),
+				"Metric": ContainElement(certificateSecretCount(issuer, 0)),
+			},
+		)),
+		// glbc_tls_certificate_issuance_duration_seconds
+		// histogram vector are not initialized
+		Not(HaveKey("glbc_tls_certificate_issuance_duration_seconds")),
+	))
 
 	// Create the test workspace
 	workspace := test.NewTestWorkspace()
@@ -117,7 +153,7 @@ func TestMetrics(t *testing.T) {
 
 	// We pull the metrics aggressively as the certificate can be issued quickly when using the CA issuer.
 	// We may want to adjust the pull interval as well as the timeout based on the configured issuer.
-	test.Eventually(Metrics(test.Ctx()), TestTimeoutMedium, 10*time.Millisecond).Should(And(
+	test.Eventually(Metrics(test), TestTimeoutMedium, 10*time.Millisecond).Should(And(
 		HaveKey("glbc_tls_certificate_pending_request_count"),
 		WithTransform(Metric("glbc_tls_certificate_pending_request_count"), Satisfy(
 			func(m *prometheus.MetricFamily) bool {
@@ -129,23 +165,7 @@ func TestMetrics(t *testing.T) {
 					t.Fatal(err)
 				}
 				hostname = ingress.Annotations[kuadrantcluster.ANNOTATION_HCG_HOST]
-
-				match, _ := EqualP(prometheus.MetricFamily{
-					Name: stringP("glbc_tls_certificate_pending_request_count"),
-					Help: stringP("GLBC TLS certificate pending request count"),
-					Type: metricTypeP(prometheus.MetricType_GAUGE),
-					Metric: []*prometheus.Metric{
-						{
-							Label: []*prometheus.LabelPair{
-								label("issuer", issuer),
-							},
-							Gauge: &prometheus.Gauge{
-								Value: float64P(1),
-							},
-						},
-					},
-				}).Match(m)
-
+				match, _ := EqualP(certificatePendingRequestCount(issuer, 1)).Match(m)
 				return match
 			},
 		)),
@@ -206,166 +226,49 @@ func TestMetrics(t *testing.T) {
 		// 	})),
 	))
 
-	// Check the metrics
-	metrics, err := getMetrics(test.Ctx())
-	test.Expect(err).NotTo(HaveOccurred())
-
-	// should be managing 1 ingress
-	test.Expect(metrics).To(And(
-		HaveKey("glbc_ingress_managed_object_total"),
-		WithTransform(Metric("glbc_ingress_managed_object_total"), EqualP(
-			prometheus.MetricFamily{
-				Name: stringP("glbc_ingress_managed_object_total"),
-				Help: stringP("Total number of managed ingress object"),
-				Type: metricTypeP(prometheus.MetricType_GAUGE),
-				Metric: []*prometheus.Metric{
-					{
-						Gauge: &prometheus.Gauge{
-							Value: float64P(1),
-						},
-					},
-				},
-			},
-		)),
-	))
-
-	test.Expect(metrics).To(And(
-		HaveKey("glbc_tls_certificate_pending_request_count"),
-		WithTransform(Metric("glbc_tls_certificate_pending_request_count"), EqualP(
-			prometheus.MetricFamily{
-				Name: stringP("glbc_tls_certificate_pending_request_count"),
-				Help: stringP("GLBC TLS certificate pending request count"),
-				Type: metricTypeP(prometheus.MetricType_GAUGE),
-				Metric: []*prometheus.Metric{
-					{
-						Label: []*prometheus.LabelPair{
-							label("issuer", issuer),
-						},
-						Gauge: &prometheus.Gauge{
-							Value: float64P(0),
-						},
-					},
-				},
-			},
-		)),
-	))
-
-	test.Expect(metrics).To(And(
-		HaveKey("glbc_tls_certificate_request_total"),
-		WithTransform(Metric("glbc_tls_certificate_request_total"), EqualP(
-			prometheus.MetricFamily{
-				Name: stringP("glbc_tls_certificate_request_total"),
-				Help: stringP("GLBC TLS certificate total number of requests"),
-				Type: metricTypeP(prometheus.MetricType_COUNTER),
-				Metric: []*prometheus.Metric{
-					{
-						Label: []*prometheus.LabelPair{
-							label("issuer", issuer),
-							label("result", "failed"),
-						},
-						Counter: &prometheus.Counter{
-							Value: float64P(0),
-						},
-					},
-					{
-						Label: []*prometheus.LabelPair{
-							label("issuer", issuer),
-							label("result", "succeeded"),
-						},
-						Counter: &prometheus.Counter{
-							Value: float64P(1),
-						},
-					},
-				},
-			},
-		)),
-	))
-
-	test.Expect(metrics).To(And(
-		HaveKey("glbc_tls_certificate_request_errors_total"),
-		WithTransform(Metric("glbc_tls_certificate_request_errors_total"), EqualP(
-			prometheus.MetricFamily{
-				Name: stringP("glbc_tls_certificate_request_errors_total"),
-				Help: stringP("GLBC TLS certificate total number of request errors"),
-				Type: metricTypeP(prometheus.MetricType_COUNTER),
-				Metric: []*prometheus.Metric{
-					{
-						Label: []*prometheus.LabelPair{
-							label("issuer", issuer),
-						},
-						Counter: &prometheus.Counter{
-							Value: float64P(0),
-						},
-					},
-				},
-			}),
-		),
-	))
-
-	test.Expect(metrics).To(And(
-		HaveKey("glbc_tls_certificate_secret_count"),
-		WithTransform(Metric("glbc_tls_certificate_secret_count"), MatchFieldsP(IgnoreExtras,
-			Fields{
-				"Name": EqualP("glbc_tls_certificate_secret_count"),
-				"Help": EqualP("GLBC TLS certificate secret count"),
-				"Type": EqualP(prometheus.MetricType_GAUGE),
-				"Metric": ContainElement(&prometheus.Metric{
-					Label: []*prometheus.LabelPair{
-						label("issuer", issuer),
-					},
-					Gauge: &prometheus.Gauge{
-						Value: float64P(1),
-					},
-				}),
-			},
-		)),
-	))
-
 	secret := GetSecret(test, namespace, ingress.Spec.TLS[0].SecretName)
 	// Ingress creation timestamp is serialized to RFC3339 format and set in an annotation on the certificate request
 	duration := secret.CreationTimestamp.Sub(ingress.CreationTimestamp.Rfc3339Copy().Time).Seconds()
-	test.Expect(metrics).To(And(
+
+	// Check the metrics
+	test.Expect(GetMetrics(test)).To(And(
+		HaveKey("glbc_ingress_managed_object_total"),
+		// should be managing 1 Ingress
+		WithTransform(Metric("glbc_ingress_managed_object_total"), EqualP(
+			ingressManagedObjectTotal(1),
+		)),
+		HaveKey("glbc_tls_certificate_pending_request_count"),
+		WithTransform(Metric("glbc_tls_certificate_pending_request_count"), EqualP(
+			certificatePendingRequestCount(issuer, 0),
+		)),
+		HaveKey("glbc_tls_certificate_request_total"),
+		WithTransform(Metric("glbc_tls_certificate_request_total"), EqualP(
+			certificateRequestTotal(issuer, 1, 0),
+		)),
+		HaveKey("glbc_tls_certificate_request_errors_total"),
+		WithTransform(Metric("glbc_tls_certificate_request_errors_total"), EqualP(
+			certificateRequestErrorsTotal(issuer, 0),
+		)),
+		HaveKey("glbc_tls_certificate_secret_count"),
+		WithTransform(Metric("glbc_tls_certificate_secret_count"), MatchFieldsP(IgnoreExtras,
+			Fields{
+				"Name":   EqualP("glbc_tls_certificate_secret_count"),
+				"Help":   EqualP("GLBC TLS certificate secret count"),
+				"Type":   EqualP(prometheus.MetricType_GAUGE),
+				"Metric": ContainElement(certificateSecretCount(issuer, 1)),
+			},
+		)),
 		HaveKey("glbc_tls_certificate_issuance_duration_seconds"),
 		WithTransform(Metric("glbc_tls_certificate_issuance_duration_seconds"), EqualP(
-			prometheus.MetricFamily{
-				Name: stringP("glbc_tls_certificate_issuance_duration_seconds"),
-				Help: stringP("GLBC TLS certificate issuance duration"),
-				Type: metricTypeP(prometheus.MetricType_HISTOGRAM),
-				Metric: []*prometheus.Metric{
-					{
-						Label: []*prometheus.LabelPair{
-							label("issuer", issuer),
-							label("result", "succeeded"),
-						},
-						Histogram: &prometheus.Histogram{
-							SampleCount: uint64P(1),
-							SampleSum:   float64P(duration),
-							Bucket: buckets(duration, []float64{
-								1 * time.Second.Seconds(),
-								5 * time.Second.Seconds(),
-								10 * time.Second.Seconds(),
-								15 * time.Second.Seconds(),
-								30 * time.Second.Seconds(),
-								45 * time.Second.Seconds(),
-								1 * time.Minute.Seconds(),
-								2 * time.Minute.Seconds(),
-								5 * time.Minute.Seconds(),
-								math.Inf(1),
-							}),
-						},
-					},
-				},
-			},
+			certificateIssuanceDurationSeconds(issuer, 1, duration),
 		)),
 	))
 
 	// Take a snapshot of the reconciliation metrics
-	metrics, err = getMetrics(test.Ctx())
-	test.Expect(err).NotTo(HaveOccurred())
-	reconcileTotal := metrics["glbc_controller_reconcile_total"]
+	reconcileTotal := GetMetric(test, "glbc_controller_reconcile_total")
 
 	// And check no reconciliation occurred over a reasonable period of time
-	test.Consistently(Metrics(test.Ctx()), 30*time.Second).Should(And(
+	test.Consistently(Metrics(test), 30*time.Second).Should(And(
 		HaveKey("glbc_controller_reconcile_total"),
 		WithTransform(Metric("glbc_controller_reconcile_total"), Equal(reconcileTotal)),
 	))
@@ -375,231 +278,190 @@ func TestMetrics(t *testing.T) {
 		Delete(test.Ctx(), name, metav1.DeleteOptions{})).
 		To(Succeed())
 
-	// Only the TLS certificate Secret count and number of ingresses managed should change
-	test.Eventually(Metrics(test.Ctx()), TestTimeoutShort).Should(And(
+	// Only the TLS certificate Secret count and number of managed Ingresses should change
+	test.Eventually(Metrics(test), TestTimeoutShort).Should(And(
 		HaveKey("glbc_tls_certificate_secret_count"),
 		WithTransform(Metric("glbc_tls_certificate_secret_count"), MatchFieldsP(IgnoreExtras,
 			Fields{
-				"Name": EqualP("glbc_tls_certificate_secret_count"),
-				"Help": EqualP("GLBC TLS certificate secret count"),
-				"Type": EqualP(prometheus.MetricType_GAUGE),
-				"Metric": ContainElement(&prometheus.Metric{
-					Label: []*prometheus.LabelPair{
-						label("issuer", issuer),
-					},
-					Gauge: &prometheus.Gauge{
-						Value: float64P(0),
-					},
-				}),
+				"Name":   EqualP("glbc_tls_certificate_secret_count"),
+				"Help":   EqualP("GLBC TLS certificate secret count"),
+				"Type":   EqualP(prometheus.MetricType_GAUGE),
+				"Metric": ContainElement(certificateSecretCount(issuer, 0)),
 			},
 		)),
 		HaveKey("glbc_ingress_managed_object_total"),
 		WithTransform(Metric("glbc_ingress_managed_object_total"), EqualP(
-			prometheus.MetricFamily{
-				Name: stringP("glbc_ingress_managed_object_total"),
-				Help: stringP("Total number of managed ingress object"),
-				Type: metricTypeP(prometheus.MetricType_GAUGE),
-				Metric: []*prometheus.Metric{
-					{
-						Gauge: &prometheus.Gauge{
-							Value: float64P(0),
-						},
-					},
-				},
-			}),
+			ingressManagedObjectTotal(0)),
 		),
 	))
 
 	// The other metrics should not be updated
-	test.Consistently(Metrics(test.Ctx()), 15*time.Second).Should(And(
+	test.Consistently(Metrics(test), 15*time.Second).Should(And(
 		HaveKey("glbc_tls_certificate_pending_request_count"),
 		WithTransform(Metric("glbc_tls_certificate_pending_request_count"), EqualP(
-			prometheus.MetricFamily{
-				Name: stringP("glbc_tls_certificate_pending_request_count"),
-				Help: stringP("GLBC TLS certificate pending request count"),
-				Type: metricTypeP(prometheus.MetricType_GAUGE),
-				Metric: []*prometheus.Metric{
-					{
-						Label: []*prometheus.LabelPair{
-							label("issuer", issuer),
-						},
-						Gauge: &prometheus.Gauge{
-							Value: float64P(0),
-						},
-					},
-				},
-			},
+			certificatePendingRequestCount(issuer, 0),
 		)),
 		HaveKey("glbc_tls_certificate_request_total"),
 		WithTransform(Metric("glbc_tls_certificate_request_total"), EqualP(
-			prometheus.MetricFamily{
-				Name: stringP("glbc_tls_certificate_request_total"),
-				Help: stringP("GLBC TLS certificate total number of requests"),
-				Type: metricTypeP(prometheus.MetricType_COUNTER),
-				Metric: []*prometheus.Metric{
-					{
-						Label: []*prometheus.LabelPair{
-							label("issuer", issuer),
-							label("result", "failed"),
-						},
-						Counter: &prometheus.Counter{
-							Value: float64P(0),
-						},
-					},
-					{
-						Label: []*prometheus.LabelPair{
-							label("issuer", issuer),
-							label("result", "succeeded"),
-						},
-						Counter: &prometheus.Counter{
-							Value: float64P(1),
-						},
-					},
-				},
-			},
+			certificateRequestTotal(issuer, 1, 0),
 		)),
 		HaveKey("glbc_tls_certificate_request_errors_total"),
 		WithTransform(Metric("glbc_tls_certificate_request_errors_total"), EqualP(
-			prometheus.MetricFamily{
-				Name: stringP("glbc_tls_certificate_request_errors_total"),
-				Help: stringP("GLBC TLS certificate total number of request errors"),
-				Type: metricTypeP(prometheus.MetricType_COUNTER),
-				Metric: []*prometheus.Metric{
-					{
-						Label: []*prometheus.LabelPair{
-							label("issuer", issuer),
-						},
-						Counter: &prometheus.Counter{
-							Value: float64P(0),
-						},
-					},
-				},
-			}),
+			certificateRequestErrorsTotal(issuer, 0)),
 		),
 		HaveKey("glbc_tls_certificate_issuance_duration_seconds"),
 		WithTransform(Metric("glbc_tls_certificate_issuance_duration_seconds"), EqualP(
-			prometheus.MetricFamily{
-				Name: stringP("glbc_tls_certificate_issuance_duration_seconds"),
-				Help: stringP("GLBC TLS certificate issuance duration"),
-				Type: metricTypeP(prometheus.MetricType_HISTOGRAM),
-				Metric: []*prometheus.Metric{
-					{
-						Label: []*prometheus.LabelPair{
-							label("issuer", issuer),
-							label("result", "succeeded"),
-						},
-						Histogram: &prometheus.Histogram{
-							SampleCount: uint64P(1),
-							SampleSum:   float64P(duration),
-							Bucket: buckets(duration, []float64{
-								1 * time.Second.Seconds(),
-								5 * time.Second.Seconds(),
-								10 * time.Second.Seconds(),
-								15 * time.Second.Seconds(),
-								30 * time.Second.Seconds(),
-								45 * time.Second.Seconds(),
-								1 * time.Minute.Seconds(),
-								2 * time.Minute.Seconds(),
-								5 * time.Minute.Seconds(),
-								math.Inf(1),
-							}),
-						},
-					},
-				},
-			},
+			certificateIssuanceDurationSeconds(issuer, 1, duration),
 		)),
 	))
 }
 
-func Metric(metric string) func(metrics map[string]*prometheus.MetricFamily) *prometheus.MetricFamily {
-	return func(metrics map[string]*prometheus.MetricFamily) *prometheus.MetricFamily {
-		return metrics[metric]
+func ingressManagedObjectTotal(value float64) prometheus.MetricFamily {
+	return prometheus.MetricFamily{
+		Name: stringP("glbc_ingress_managed_object_total"),
+		Help: stringP("Total number of managed ingress object"),
+		Type: metricTypeP(prometheus.MetricType_GAUGE),
+		Metric: []*prometheus.Metric{
+			{
+				Gauge: &prometheus.Gauge{
+					Value: float64P(value),
+				},
+			},
+		},
 	}
 }
 
-func Metrics(ctx context.Context) func(g Gomega) map[string]*prometheus.MetricFamily {
-	return func(g Gomega) map[string]*prometheus.MetricFamily {
-		m, err := getMetrics(ctx)
-		g.Expect(err).NotTo(HaveOccurred())
-		return m
+func ingressManagedObjectTimeToAdmission(count uint64, duration float64) prometheus.MetricFamily {
+	return prometheus.MetricFamily{
+		Name: stringP("glbc_ingress_managed_object_time_to_admission"),
+		Help: stringP("Duration of the ingress object admission"),
+		Type: metricTypeP(prometheus.MetricType_HISTOGRAM),
+		Metric: []*prometheus.Metric{
+			{
+				Histogram: &prometheus.Histogram{
+					SampleCount: uint64P(count),
+					SampleSum:   float64P(duration),
+					Bucket: buckets(duration, []float64{
+						1 * time.Second.Seconds(),
+						5 * time.Second.Seconds(),
+						10 * time.Second.Seconds(),
+						15 * time.Second.Seconds(),
+						30 * time.Second.Seconds(),
+						45 * time.Second.Seconds(),
+						1 * time.Minute.Seconds(),
+						2 * time.Minute.Seconds(),
+						5 * time.Minute.Seconds(),
+						math.Inf(1),
+					}),
+				},
+			},
+		},
 	}
 }
 
-func getMetrics(ctx context.Context) (map[string]*prometheus.MetricFamily, error) {
-	data, err := requestMetrics(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return parsePrometheusData(data)
-}
-
-func requestMetrics(ctx context.Context) (data []byte, err error) {
-	// This should be made configurable, or eventually retrieved from Pod logs if run in-cluster
-	request, err := http.NewRequestWithContext(ctx, "GET", "http://localhost:8080/metrics", nil)
-	if err != nil {
-		return
-	}
-	client := http.Client{}
-	response, err := client.Do(request)
-	if err != nil {
-		return
-	}
-
-	defer func(Body io.ReadCloser) {
-		e := Body.Close()
-		if err == nil {
-			err = e
-		}
-	}(response.Body)
-
-	data, err = io.ReadAll(response.Body)
-	return
-}
-
-// https://prometheus.io/docs/instrumenting/exposition_formats/
-func parsePrometheusData(data []byte) (map[string]*prometheus.MetricFamily, error) {
-	var parser expfmt.TextParser
-	return parser.TextToMetricFamilies(bytes.NewReader(data))
-}
-
-func label(name, value string) *prometheus.LabelPair {
-	return &prometheus.LabelPair{
-		Name:  &name,
-		Value: &value,
+func certificatePendingRequestCount(issuer string, value float64) prometheus.MetricFamily {
+	return prometheus.MetricFamily{
+		Name: stringP("glbc_tls_certificate_pending_request_count"),
+		Help: stringP("GLBC TLS certificate pending request count"),
+		Type: metricTypeP(prometheus.MetricType_GAUGE),
+		Metric: []*prometheus.Metric{
+			{
+				Label: []*prometheus.LabelPair{
+					label("issuer", issuer),
+				},
+				Gauge: &prometheus.Gauge{
+					Value: float64P(0),
+				},
+			},
+		},
 	}
 }
 
-func bucket(value float64, upperBound float64) *prometheus.Bucket {
-	var count uint64
-	if value <= upperBound {
-		count++
+func certificateRequestTotal(issuer string, succeeded, failed float64) prometheus.MetricFamily {
+	return prometheus.MetricFamily{
+		Name: stringP("glbc_tls_certificate_request_total"),
+		Help: stringP("GLBC TLS certificate total number of requests"),
+		Type: metricTypeP(prometheus.MetricType_COUNTER),
+		Metric: []*prometheus.Metric{
+			{
+				Label: []*prometheus.LabelPair{
+					label("issuer", issuer),
+					label("result", "failed"),
+				},
+				Counter: &prometheus.Counter{
+					Value: float64P(failed),
+				},
+			},
+			{
+				Label: []*prometheus.LabelPair{
+					label("issuer", issuer),
+					label("result", "succeeded"),
+				},
+				Counter: &prometheus.Counter{
+					Value: float64P(succeeded),
+				},
+			},
+		},
 	}
-	return &prometheus.Bucket{
-		UpperBound:      float64P(upperBound),
-		CumulativeCount: &count,
+}
+
+func certificateRequestErrorsTotal(issuer string, value float64) prometheus.MetricFamily {
+	return prometheus.MetricFamily{
+		Name: stringP("glbc_tls_certificate_request_errors_total"),
+		Help: stringP("GLBC TLS certificate total number of request errors"),
+		Type: metricTypeP(prometheus.MetricType_COUNTER),
+		Metric: []*prometheus.Metric{
+			{
+				Label: []*prometheus.LabelPair{
+					label("issuer", issuer),
+				},
+				Counter: &prometheus.Counter{
+					Value: float64P(value),
+				},
+			},
+		},
 	}
 }
 
-func buckets(value float64, upperBounds []float64) []*prometheus.Bucket {
-	var buckets []*prometheus.Bucket
-	for _, upperBound := range upperBounds {
-		buckets = append(buckets, bucket(value, upperBound))
+func certificateIssuanceDurationSeconds(issuer string, count uint64, duration float64) prometheus.MetricFamily {
+	return prometheus.MetricFamily{
+		Name: stringP("glbc_tls_certificate_issuance_duration_seconds"),
+		Help: stringP("GLBC TLS certificate issuance duration"),
+		Type: metricTypeP(prometheus.MetricType_HISTOGRAM),
+		Metric: []*prometheus.Metric{
+			{
+				Label: []*prometheus.LabelPair{
+					label("issuer", issuer),
+					label("result", "succeeded"),
+				},
+				Histogram: &prometheus.Histogram{
+					SampleCount: uint64P(count),
+					SampleSum:   float64P(duration),
+					Bucket: buckets(duration, []float64{
+						1 * time.Second.Seconds(),
+						5 * time.Second.Seconds(),
+						10 * time.Second.Seconds(),
+						15 * time.Second.Seconds(),
+						30 * time.Second.Seconds(),
+						45 * time.Second.Seconds(),
+						1 * time.Minute.Seconds(),
+						2 * time.Minute.Seconds(),
+						5 * time.Minute.Seconds(),
+						math.Inf(1),
+					}),
+				},
+			},
+		},
 	}
-	return buckets
 }
 
-func stringP(s string) *string {
-	return &s
-}
-
-func metricTypeP(t prometheus.MetricType) *prometheus.MetricType {
-	return &t
-}
-
-func uint64P(i uint64) *uint64 {
-	return &i
-}
-
-func float64P(f float64) *float64 {
-	return &f
+func certificateSecretCount(issuer string, value float64) *prometheus.Metric {
+	return &prometheus.Metric{
+		Label: []*prometheus.LabelPair{
+			label("issuer", issuer),
+		},
+		Gauge: &prometheus.Gauge{
+			Value: float64P(value),
+		},
+	}
 }
