@@ -71,7 +71,12 @@ func NewController(config *ControllerConfig) *Controller {
 
 	// Watch for events related to Services
 	c.sharedInformerFactory.Core().V1().Services().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(_, obj interface{}) { c.ingressesFromService(obj) },
+		AddFunc: func(obj interface{}) { c.ingressesFromService(obj) },
+		UpdateFunc: func(old, obj interface{}) {
+			if old.(*corev1.Service).ResourceVersion != obj.(*corev1.Service).ResourceVersion {
+				c.ingressesFromService(obj)
+			}
+		},
 		DeleteFunc: func(obj interface{}) { c.ingressesFromService(obj) },
 	})
 
@@ -79,8 +84,12 @@ func NewController(config *ControllerConfig) *Controller {
 	// that relies on the workloads.kcp.dev/cluster label set on the Namespaces.
 	// It may be removed once it's migrated to the KCP Location API.
 	c.sharedInformerFactory.Core().V1().Namespaces().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { c.ingressesInNamespace(obj) },
-		UpdateFunc: func(_, obj interface{}) { c.ingressesInNamespace(obj) },
+		AddFunc: func(obj interface{}) { c.ingressesInNamespace(obj) },
+		UpdateFunc: func(old, obj interface{}) {
+			if old.(*corev1.Namespace).ResourceVersion != obj.(*corev1.Namespace).ResourceVersion {
+				c.ingressesInNamespace(obj)
+			}
+		},
 	})
 
 	c.indexer = c.sharedInformerFactory.Networking().V1().Ingresses().Informer().GetIndexer()
