@@ -53,8 +53,12 @@ func NewController(config *ControllerConfig) (*Controller, error) {
 	c.dnsZones = dnsZones
 
 	c.sharedInformerFactory.Kuadrant().V1().DNSRecords().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { c.Enqueue(obj) },
-		UpdateFunc: func(_, obj interface{}) { c.Enqueue(obj) },
+		AddFunc: func(obj interface{}) { c.Enqueue(obj) },
+		UpdateFunc: func(old, obj interface{}) {
+			if old.(*v1.DNSRecord).Generation != obj.(*v1.DNSRecord).Generation {
+				c.Enqueue(obj)
+			}
+		},
 		DeleteFunc: func(obj interface{}) { c.Enqueue(obj) },
 	})
 
