@@ -166,6 +166,8 @@ jobs:
 
           GLBC_LOG_FILE="${TEMP_DIR}"/glbc.log
           echo "GLBC_LOG_FILE=${GLBC_LOG_FILE}" >> $GITHUB_ENV
+          export AWS_DNS_PUBLIC_ZONE_ID=FAKE_ZONE_ID
+          echo "AWS_DNS_PUBLIC_ZONE_ID=FAKE_ZONE_ID" >> $GITHUB_ENV
           echo "Starting GLBC, sending logs to ${GLBC_LOG_FILE}"
           ./bin/kcp-glbc --kubeconfig .kcp/admin.kubeconfig --context system:admin --glbc-kubeconfig "${HOME}"/.kube/config --dns-provider fake --glbc-tls-provided true > ${GLBC_LOG_FILE} 2>&1 &
           GLBC_PID=$!
@@ -182,6 +184,7 @@ jobs:
         run: |
           export KUBECONFIG=${{ env.KUBECONFIG }}
           export CLUSTERS_KUBECONFIG_DIR=${{ env.CLUSTERS_KUBECONFIG_DIR }}
+          export AWS_DNS_PUBLIC_ZONE_ID=${{ env.AWS_DNS_PUBLIC_ZONE_ID }}
 
           # Then run e2e tests
           make e2e

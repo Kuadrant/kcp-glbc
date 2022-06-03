@@ -67,8 +67,9 @@ test: generate ## Run tests.
 
 .PHONY: e2e
 e2e: build
-	## Run the metrics test first, so it's start from a clean state
+	## Run the metrics test first, so it starts from a clean state
 	KUBECONFIG="$(KUBECONFIG)" CLUSTERS_KUBECONFIG_DIR="$(CLUSTERS_KUBECONFIG_DIR)" \
+	AWS_DNS_PUBLIC_ZONE_ID="${AWS_DNS_PUBLIC_ZONE_ID}" \
 	go test -timeout 60m -v ./e2e/metrics -tags=e2e
 	## Run the other tests
 	KUBECONFIG="$(KUBECONFIG)" CLUSTERS_KUBECONFIG_DIR="$(CLUSTERS_KUBECONFIG_DIR)" \
