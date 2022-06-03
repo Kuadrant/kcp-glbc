@@ -24,6 +24,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -170,13 +171,40 @@ func TestMetrics(t *testing.T) {
 	))
 
 	// Check the TLS Secret
-	test.Eventually(Secret(test, namespace, secretName)).
-		WithTimeout(TestTimeoutMedium).
-		Should(WithTransform(Certificate, PointTo(MatchFields(IgnoreExtras,
-			map[string]types.GomegaMatcher{
+	test.Eventually(Secret(test, namespace, secretName)).WithTimeout(TestTimeoutMedium).Should(
+		WithTransform(Certificate, PointTo(
+			MatchFields(IgnoreExtras, map[string]types.GomegaMatcher{
 				"DNSNames": ConsistOf(hostname),
-			},
-		))))
+			}),
+		)),
+	)
+
+	ingress := GetIngress(test, namespace, name)
+
+	zoneID := os.Getenv("AWS_DNS_PUBLIC_ZONE_ID")
+	test.Expect(zoneID).NotTo(BeNil())
+
+	// Check a DNSRecord for the Ingress is updated with the expected Spec
+	test.Eventually(DNSRecord(test, namespace, name)).Should(And(
+		WithTransform(DNSRecordEndpoints, HaveLen(1)),
+		WithTransform(DNSRecordEndpoints, ContainElement(MatchFieldsP(IgnoreExtras,
+			Fields{
+				"DNSName":          Equal(ingress.Annotations[kuadrantcluster.ANNOTATION_HCG_HOST]),
+				"Targets":          ConsistOf(ingress.Status.LoadBalancer.Ingress[0].IP),
+				"RecordType":       Equal("A"),
+				"RecordTTL":        Equal(kuadrantv1.TTL(60)),
+				"SetIdentifier":    Equal(ingress.Status.LoadBalancer.Ingress[0].IP),
+				"ProviderSpecific": ConsistOf(kuadrantv1.ProviderSpecific{{Name: "aws/weight", Value: "120"}}),
+			})),
+		),
+		// TODO: Reactivate when kcp is migrated to version 0.5.0
+		// WithTransform(DNSRecordCondition(zoneID, kuadrantv1.DNSRecordFailedConditionType), MatchFieldsP(IgnoreExtras,
+		// 	Fields{
+		// 		"Status":  Equal("False"),
+		// 		"Reason":  Equal("ProviderSuccess"),
+		// 		"Message": Equal("The DNS provider succeeded in ensuring the record"),
+		// 	})),
+	))
 
 	// Check the metrics
 	metrics, err := getMetrics(test.Ctx())
@@ -293,7 +321,6 @@ func TestMetrics(t *testing.T) {
 		)),
 	))
 
-	ingress := GetIngress(test, namespace, name)
 	secret := GetSecret(test, namespace, ingress.Spec.TLS[0].SecretName)
 	// Ingress creation timestamp is serialized to RFC3339 format and set in an annotation on the certificate request
 	duration := secret.CreationTimestamp.Sub(ingress.CreationTimestamp.Rfc3339Copy().Time).Seconds()

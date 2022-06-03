@@ -30,3 +30,20 @@ func DNSRecord(t Test, namespace *corev1.Namespace, name string) func(g gomega.G
 func DNSRecordEndpoints(record *kuadrantv1.DNSRecord) []*kuadrantv1.Endpoint {
 	return record.Spec.Endpoints
 }
+
+func DNSRecordCondition(zoneID, condition string) func(record *kuadrantv1.DNSRecord) *kuadrantv1.DNSZoneCondition {
+	return func(record *kuadrantv1.DNSRecord) *kuadrantv1.DNSZoneCondition {
+		for _, z := range record.Status.Zones {
+			if z.DNSZone.ID != zoneID {
+				continue
+			}
+			for _, c := range z.Conditions {
+				if c.Type == condition {
+					return &c
+				}
+			}
+			return nil
+		}
+		return nil
+	}
+}
