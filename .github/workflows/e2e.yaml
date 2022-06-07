@@ -157,6 +157,9 @@ jobs:
           echo "Waiting 15 seconds..."
           sleep 15
 
+          echo "Register K8s APIs"
+          kubectl apply -f ./utils/kcp-contrib/crds
+
           echo "Export GLBC APIs"
           # Workaround for https://github.com/kcp-dev/kcp/issues/1038
           kubectl apply -f ./config/crd/bases
