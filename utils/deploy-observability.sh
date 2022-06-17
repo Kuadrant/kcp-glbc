@@ -31,14 +31,11 @@ kubectl config use-context kind-kcp-cluster-glbc-control
 # Deploy kube-prometheus (includes prometheus, alertmanager & grafana)
 wait_for "./bin/kustomize build config/observability/kubernetes/prometheus | kubectl apply --force-conflicts  --server-side -f -" "prometheus" "2m" "10"
 
-# Deploy Grafana Ingress
+# Deploy additional Grafana resources
 wait_for "./bin/kustomize build config/observability/kubernetes/grafana | kubectl apply -f -" "grafana" "1m" "5"
 
 # Wait for prometheus
 kubectl -n ${PROMETHEUS_NAMESPACE} wait --timeout=300s --for=condition=Available deployments --all
-
-# Deploy Grafana Dashboards
-kubectl -n ${PROMETHEUS_NAMESPACE} create configmap glbc-dashboard --from-file=glbc_overview.json=config/observability/grafana/dashboards/glbc.json -o yaml --dry-run=client | kubectl apply -f -
 
 # Deploy Pod Monitor for kcp-glbc
 ./bin/kustomize build config/prometheus/ | kubectl -n ${GLBC_NAMESPACE} apply -f -
