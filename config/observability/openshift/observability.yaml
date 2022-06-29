@@ -1,0 +1,29 @@
+apiVersion: observability.redhat.com/v1
+kind: Observability
+metadata:
+  name: observability-stack
+  namespace: observability-operator
+spec:
+  resyncPeriod: 1h
+  retention: 45d
+  configurationSelector:
+    matchLabels:
+      configures: "observability-operator"
+  selfContained:
+    overrideSelectors: true
+    disableObservatorium: true
+    disablePagerDuty: true
+    disableDeadmansSnitch: true
+    disableBlackboxExporter: true
+    podMonitorLabelSelector:
+      matchLabels:
+        app: glbc
+    serviceMonitorLabelSelector:
+      matchLabels:
+        app: glbc
+    ruleLabelSelector:
+      matchLabels:
+        app: glbc
+    grafanaDashboardLabelSelector:
+      matchLabels:
+        app: glbc

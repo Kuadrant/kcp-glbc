@@ -1,0 +1,5 @@
+match[]:
+  - 'console_url'
+  - 'cluster_version'
+  - '{__name__=~"kube_pod_.*|kube_namespace_.*|kube_persistentvolumeclaim_.*",service="kube-state-metrics",namespace!~"openshift-.*$",namespace!~"kube-.*$",namespace!="default"}'
+  - '{__name__=~"container_.*",namespace!~"openshift-.*$",namespace!~"kube-.*$",namespace!="default"}'

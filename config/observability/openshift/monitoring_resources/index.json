@@ -1,0 +1,28 @@
+{
+    "id": "hcg-staging",
+    "config": {
+        "grafana": {
+            "dashboards": [
+                "dashboard-glbc.yaml"
+            ],
+            "dashboardLabelSelector": {
+                "app": "glbc"
+            }
+        },
+        "promtail": {
+            "enabled": false
+        },
+        "alertmanager": {},
+        "prometheus": {
+            "pod_monitors": [
+                "podmonitor-kcp-glbc-controller-manager.yaml"
+            ],
+            "rules": [
+                "prometheus-rules.yaml"
+            ],
+            "remoteWrite": "remote-write.yaml",
+            "federation": "federation-config.yaml"
+        },
+        "observatoria": []
+    }
+}

@@ -1,3 +1,15 @@
-
 resources:
-  - observability-operator
+  - namespace.yaml
+  - catalogsource.yaml
+  - subscription.yaml
+  - operatorgroup.yaml
+  - installplan.yaml
+  - observability_secret.yaml
+  - observability.yaml
+
+secretGenerator:
+  - name: kcp-glbc-observability-configuration
+    namespace: observability-operator
+    behavior: merge
+    envs:
+      - observability-operator.env

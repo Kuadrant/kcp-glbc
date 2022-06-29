@@ -1,0 +1,10 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: InstallPlan
+metadata:
+  name: observability-operator
+  namespace: observability-operator
+spec:
+  approval: Automatic
+  approved: true
+  clusterServiceVersionNames:
+    - observability-operator.v3.0.11

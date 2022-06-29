@@ -1,0 +1,12 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: observability-operator
+  namespace: observability-operator
+spec:
+  channel: alpha
+  installPlanApproval: Automatic
+  name: observability-operator
+  source: observability-catalogsource
+  sourceNamespace: observability-operator
+  startingCSV: observability-operator.v3.0.11

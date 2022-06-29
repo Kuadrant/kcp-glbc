@@ -236,12 +236,15 @@ $(DHALL):
 DHALL_SOURCE_DIR := config/observability/monitoring_resources
 DHALL_COMMON_SOURCE_DIR := $(DHALL_SOURCE_DIR)/common
 DHALL_K8S_SOURCE_DIR := $(DHALL_SOURCE_DIR)/kubernetes
+DHALL_OPENSHIFT_SOURCE_DIR := $(DHALL_SOURCE_DIR)/openshift
 DHALL_K8S_TARGET_DIR := config/observability/kubernetes/monitoring_resources
+DHALL_OPENSHIFT_TARGET_DIR := config/observability/openshift/monitoring_resources
 DHALL_K8S_TARGETS := $(addprefix $(DHALL_K8S_TARGET_DIR)/,$(patsubst %.dhall,%.yaml,$(shell ls $(DHALL_COMMON_SOURCE_DIR)/*.dhall | xargs -n 1 basename))) $(addprefix $(DHALL_K8S_TARGET_DIR)/,$(patsubst %.dhall,%.yaml,$(shell ls $(DHALL_K8S_SOURCE_DIR)/*.dhall | xargs -n 1 basename)))
+DHALL_OPENSHIFT_TARGETS := $(addprefix $(DHALL_OPENSHIFT_TARGET_DIR)/,$(patsubst %.dhall,%.yaml,$(shell ls $(DHALL_COMMON_SOURCE_DIR)/*.dhall | xargs -n 1 basename))) $(addprefix $(DHALL_OPENSHIFT_TARGET_DIR)/,$(patsubst %.dhall,%.yaml,$(shell ls $(DHALL_OPENSHIFT_SOURCE_DIR)/*.dhall | xargs -n 1 basename)))
 
 # TODO: detect when dashboard json file has been modified, which is used by dashboard dhall files
 # May need to run this if only the .json has changed for grafana dashboard
-# touch config/observability/monitoring_resources/kubernetes/dashboard-glbc.dhall
+# touch config/observability/monitoring_resources/kubernetes/dashboard-glbc.dhall config/observability/monitoring_resources/openshift/dashboard-glbc.dhall
 define GENERATE_DHALL
 	$(DHALL) format $<
 	$(DHALL_TO_YAML) --generated-comment --file $< --output $@
@@ -250,17 +253,28 @@ endef
 $(DHALL_K8S_TARGET_DIR)/%.yaml: $(DHALL_COMMON_SOURCE_DIR)/%.dhall
 	$(GENERATE_DHALL)
 
+$(DHALL_OPENSHIFT_TARGET_DIR)/%.yaml: $(DHALL_COMMON_SOURCE_DIR)/%.dhall
+	$(GENERATE_DHALL)
+
 $(DHALL_K8S_TARGET_DIR)/%.yaml: $(DHALL_K8S_SOURCE_DIR)/%.dhall
+	$(GENERATE_DHALL)
+
+$(DHALL_OPENSHIFT_TARGET_DIR)/%.yaml: $(DHALL_OPENSHIFT_SOURCE_DIR)/%.dhall
 	$(GENERATE_DHALL)
 
 $(DHALL_K8S_TARGETS): | $(DHALL_K8S_TARGET_DIR)
 
+$(DHALL_OPENSHIFT_TARGETS): | $(DHALL_OPENSHIFT_TARGET_DIR)
+
 $(DHALL_K8S_TARGET_DIR):
 	mkdir $(DHALL_K8S_TARGET_DIR)
 
+$(DHALL_OPENSHIFT_TARGET_DIR):
+	mkdir $(DHALL_OPENSHIFT_TARGET_DIR)
+
 # Generate monitoring resources for prometheus etc... 
 .PHONY: gen-monitoring-resources
-gen-monitoring-resources: dhall ${DHALL_K8S_TARGETS}
+gen-monitoring-resources: dhall ${DHALL_K8S_TARGETS} ${DHALL_OPENSHIFT_TARGETS}
 
 # Ensure the generated monitoring resources are the latest
 .PHONY: verify-gen-monitoring-resources
