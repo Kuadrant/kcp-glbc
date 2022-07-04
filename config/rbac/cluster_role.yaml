@@ -1,0 +1,22 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kcp-glbc-controller-manager
+rules:
+  - apiGroups:
+    - apis.kcp.dev
+    resources:
+      - apiexports
+    verbs:
+      - get
+  - apiGroups:
+    - apis.kcp.dev
+    resources:
+      - apiexports/content
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
