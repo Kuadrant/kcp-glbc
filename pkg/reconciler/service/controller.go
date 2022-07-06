@@ -55,7 +55,7 @@ type Controller struct {
 }
 
 func (c *Controller) process(ctx context.Context, key string) error {
-	service, exists, err := c.indexer.GetByKey(key)
+	object, exists, err := c.indexer.GetByKey(key)
 	if err != nil {
 		return err
 	}
@@ -65,15 +65,15 @@ func (c *Controller) process(ctx context.Context, key string) error {
 		return nil
 	}
 
-	current := service.(*corev1.Service)
-	previous := current.DeepCopy()
+	current := object.(*corev1.Service)
+	target := current.DeepCopy()
 
-	if err = c.reconcile(ctx, current); err != nil {
+	if err = c.reconcile(ctx, target); err != nil {
 		return err
 	}
 
-	if !equality.Semantic.DeepEqual(previous, current) {
-		_, err := c.coreClient.Cluster(logicalcluster.From(current)).CoreV1().Services(current.Namespace).Update(ctx, current, metav1.UpdateOptions{})
+	if !equality.Semantic.DeepEqual(current, target) {
+		_, err := c.coreClient.Cluster(logicalcluster.From(target)).CoreV1().Services(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 		return err
 	}
 

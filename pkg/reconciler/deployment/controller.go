@@ -58,7 +58,7 @@ type Controller struct {
 }
 
 func (c *Controller) process(ctx context.Context, key string) error {
-	deployment, exists, err := c.indexer.GetByKey(key)
+	object, exists, err := c.indexer.GetByKey(key)
 	if err != nil {
 		return err
 	}
@@ -68,16 +68,16 @@ func (c *Controller) process(ctx context.Context, key string) error {
 		return nil
 	}
 
-	current := deployment.(*appsv1.Deployment)
-	previous := current.DeepCopy()
+	current := object.(*appsv1.Deployment)
+	target := current.DeepCopy()
 
-	if err = c.reconcile(ctx, current); err != nil {
+	if err = c.reconcile(ctx, target); err != nil {
 		return err
 	}
 
 	// If the object being reconciled changed as a result, update it.
-	if !equality.Semantic.DeepEqual(previous, current) {
-		_, err := c.coreClient.Cluster(logicalcluster.From(current)).AppsV1().Deployments(current.Namespace).Update(ctx, current, metav1.UpdateOptions{})
+	if !equality.Semantic.DeepEqual(target, current) {
+		_, err := c.coreClient.Cluster(logicalcluster.From(target)).AppsV1().Deployments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 		return err
 	}
 

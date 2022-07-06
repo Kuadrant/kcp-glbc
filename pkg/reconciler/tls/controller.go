@@ -81,7 +81,7 @@ func NewController(config *ControllerConfig) (*Controller, error) {
 }
 
 func (c *Controller) process(ctx context.Context, key string) error {
-	secret, exists, err := c.glbcSecretInformer.Informer().GetIndexer().GetByKey(key)
+	object, exists, err := c.glbcSecretInformer.Informer().GetIndexer().GetByKey(key)
 	if err != nil {
 		return err
 	}
@@ -91,14 +91,15 @@ func (c *Controller) process(ctx context.Context, key string) error {
 		return nil
 	}
 
-	current := secret.(*corev1.Secret)
-	previous := current.DeepCopy()
-	if err = c.reconcile(ctx, current); err != nil {
+	current := object.(*corev1.Secret)
+	target := current.DeepCopy()
+
+	if err = c.reconcile(ctx, target); err != nil {
 		return err
 	}
 
-	if !equality.Semantic.DeepEqual(previous, current) {
-		_, err := c.glbcKubeClient.CoreV1().Secrets(current.Namespace).Update(ctx, current, metav1.UpdateOptions{})
+	if !equality.Semantic.DeepEqual(current, target) {
+		_, err := c.glbcKubeClient.CoreV1().Secrets(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 		return err
 	}
 

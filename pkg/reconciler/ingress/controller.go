@@ -114,7 +114,7 @@ type Controller struct {
 }
 
 func (c *Controller) process(ctx context.Context, key string) error {
-	ingress, exists, err := c.indexer.GetByKey(key)
+	object, exists, err := c.indexer.GetByKey(key)
 	if err != nil {
 		return err
 	}
@@ -126,16 +126,16 @@ func (c *Controller) process(ctx context.Context, key string) error {
 		return nil
 	}
 
-	current := ingress.(*networkingv1.Ingress)
-	previous := current.DeepCopy()
+	current := object.(*networkingv1.Ingress)
+	target := current.DeepCopy()
 
-	err = c.reconcile(ctx, current)
+	err = c.reconcile(ctx, target)
 	if err != nil {
 		return err
 	}
 
-	if !equality.Semantic.DeepEqual(previous, current) {
-		_, err := c.kubeClient.Cluster(logicalcluster.From(current)).NetworkingV1().Ingresses(current.Namespace).Update(ctx, current, metav1.UpdateOptions{})
+	if !equality.Semantic.DeepEqual(current, target) {
+		_, err := c.kubeClient.Cluster(logicalcluster.From(target)).NetworkingV1().Ingresses(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 		return err
 	}
 
