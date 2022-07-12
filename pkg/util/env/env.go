@@ -27,6 +27,18 @@ func GetEnvBool(key string, fallback bool) bool {
 	return value
 }
 
+func GetEnvInt(key string, fallback int) int {
+	strValue, found := os.LookupEnv(key)
+	if !found {
+		return fallback
+	}
+	value, err := strconv.Atoi(strValue)
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+
 func GetNamespace() string {
 	return GetEnvString(namespaceEnvVariable, "")
 }

@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build e2e || performance
 
 /*
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,6 +37,19 @@ func DNSRecord(t Test, namespace *corev1.Namespace, name string) func(g gomega.G
 		dnsRecord, err := t.Client().Kuadrant().Cluster(logicalcluster.From(namespace)).KuadrantV1().DNSRecords(namespace.Name).Get(t.Ctx(), name, metav1.GetOptions{})
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		return dnsRecord
+	}
+}
+
+func GetDNSRecords(t Test, namespace *corev1.Namespace, labelSelector string) []kuadrantv1.DNSRecord {
+	t.T().Helper()
+	return DNSRecords(t, namespace, labelSelector)(t)
+}
+
+func DNSRecords(t Test, namespace *corev1.Namespace, labelSelector string) func(g gomega.Gomega) []kuadrantv1.DNSRecord {
+	return func(g gomega.Gomega) []kuadrantv1.DNSRecord {
+		dnsRecords, err := t.Client().Kuadrant().Cluster(logicalcluster.From(namespace)).KuadrantV1().DNSRecords(namespace.Name).List(t.Ctx(), metav1.ListOptions{LabelSelector: labelSelector})
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		return dnsRecords.Items
 	}
 }
 
