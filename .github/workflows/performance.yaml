@@ -1,0 +1,57 @@
+name: Performance
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_dnsrecord_count:
+        description: 'Number of DNSSRecord to create'
+        required: false
+        default: '2'
+      test_ingress_count:
+        description: 'Number of Ingresses to create'
+        required: false
+        default: '2'
+
+jobs:
+  load:
+    name: Load
+    environment: unstable
+    runs-on: ubuntu-20.04
+    env:
+      TEST_DNSRECORD_COUNT: ${{ github.event.inputs.test_dnsrecord_count}}
+      TEST_INGRESS_COUNT: ${{ github.event.inputs.test_ingress_count }}
+      AWS_DNS_PUBLIC_ZONE_ID: ${{ secrets.AWS_DNS_PUBLIC_ZONE_ID }}
+      GLBC_DOMAIN: ${{ secrets.GLBC_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: v1.17
+      - name: Setup Kubeconfig
+        run: |
+          kubectl config --kubeconfig=test.kubeconfig set-cluster glbc --server=${{ secrets.TEST_KUBE_HOST }}
+          kubectl config --kubeconfig=test.kubeconfig set-credentials glbc --token=${{ secrets.TEST_KUBE_TOKEN }}
+          kubectl config --kubeconfig=test.kubeconfig set-context system:admin --cluster=glbc --namespace=${{ secrets.CICD_KUBE_NS }} --user=glbc
+          kubectl config --kubeconfig=test.kubeconfig use-context system:admin
+          kubectl config --kubeconfig=test.kubeconfig get-contexts
+          export KUBECONFIG="$(pwd)"/test.kubeconfig
+          echo "KUBECONFIG=${KUBECONFIG}" >> $GITHUB_ENV
+      - name: Run pre test
+        env:
+          TEST_DNSRECORD_COUNT: 1
+          TEST_INGRESS_COUNT: 1
+        run: |
+          export KUBECONFIG=${{ env.KUBECONFIG }}
+          echo "TEST_INGRESS_COUNT = ${{ env.TEST_INGRESS_COUNT }}"
+          echo "TEST_DNSRECORD_COUNT = ${{ env.TEST_DNSRECORD_COUNT }}"
+          echo "AWS_DNS_PUBLIC_ZONE_ID = ${{ env.AWS_DNS_PUBLIC_ZONE_ID }}"
+          echo "GLBC_DOMAIN = ${{ env.GLBC_DOMAIN }}"
+          make performance
+      - name: Run performance tests
+        run: |
+          export KUBECONFIG=${{ env.KUBECONFIG }}
+          echo "TEST_INGRESS_COUNT = ${{ env.TEST_INGRESS_COUNT }}"
+          echo "TEST_DNSRECORD_COUNT = ${{ env.TEST_DNSRECORD_COUNT }}"
+          echo "AWS_DNS_PUBLIC_ZONE_ID = ${{ env.AWS_DNS_PUBLIC_ZONE_ID }}"
+          echo "GLBC_DOMAIN = ${{ env.GLBC_DOMAIN }}"
+          make performance
