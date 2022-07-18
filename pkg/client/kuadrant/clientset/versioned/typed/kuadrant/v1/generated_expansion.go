@@ -3,3 +3,5 @@
 package v1
 
 type DNSRecordExpansion interface{}
+
+type DomainVerificationExpansion interface{}

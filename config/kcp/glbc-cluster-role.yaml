@@ -26,8 +26,7 @@ rules:
 - apiGroups:
   - "kuadrant.dev"
   resources:
-  - dnsrecords
-  - dnsrecords/status
+  - "*"
   verbs:
   - "*"
 - apiGroups:

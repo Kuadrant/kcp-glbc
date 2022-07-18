@@ -1,8 +1,52 @@
 package v1
 
 import (
+	"fmt"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// +crd
+// +genclient
+// +genclient:nonNamespaced
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster
+type DomainVerification struct {
+	metav1.TypeMeta `json:",inline"`
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              DomainVerificationSpec `json:"spec"`
+	// +optional
+	Status DomainVerificationStatus `json:"status"`
+}
+
+func (dv *DomainVerification) GetToken() string {
+	return fmt.Sprintf("glbctoken=glbc-%s", dv.ClusterName)
+}
+
+type DomainVerificationSpec struct {
+	Domain string `json:"domain"`
+}
+
+type DomainVerificationStatus struct {
+	Token    string `json:"token"`
+	Verified bool   `json:"verified"`
+	// +optional
+	LastChecked metav1.Time `json:"lastChecked,omitempty"`
+	// +optional
+	NextCheck metav1.Time `json:"nextCheck,omitempty"`
+	// +optional
+	Message string `json:"message,omitempty"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type DomainVerificationList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []DomainVerification `json:"items"`
+}
 
 // +genclient
 // +kubebuilder:object:root=true

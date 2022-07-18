@@ -54,6 +54,15 @@ func (c *Controller) Enqueue(obj interface{}) {
 	c.Queue.Add(key)
 }
 
+func (c *Controller) EnqueueAfter(obj interface{}, dur time.Duration) {
+	key, err := cache.MetaNamespaceKeyFunc(obj)
+	if err != nil {
+		runtime.HandleError(err)
+		return
+	}
+	c.Queue.AddAfter(key, dur)
+}
+
 func (c *Controller) Start(ctx context.Context, numThreads int) {
 	defer runtime.HandleCrash()
 	defer c.Queue.ShutDown()
@@ -108,7 +117,6 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 	// Re-enqueue up to 5 times
 	n := c.Queue.NumRequeues(key)
 	if n < 5 {
-		c.Logger.Error(err, "Re-queuing after reconciliation error", "key", key, "retries", n)
 		c.Queue.AddRateLimited(key)
 		return true
 	}

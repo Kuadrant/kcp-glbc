@@ -66,6 +66,33 @@ func (r *ConfigMapHostResolver) LookupIPAddr(ctx context.Context, host string) (
 	return result, nil
 }
 
+func (r *ConfigMapHostResolver) TxtRecordExists(ctx context.Context, domain string, value string) (bool, error) {
+	configMap, err := r.Client.CoreV1().ConfigMaps(r.Namespace).Get(ctx, r.Name, v1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+
+	ipsValue, ok := configMap.Data[domain]
+	if !ok {
+		return false, &gonet.DNSError{Err: "no such host"}
+	}
+
+	var values []struct {
+		TXT string
+	}
+	if err := json.Unmarshal([]byte(ipsValue), &values); err != nil {
+		return false, err
+	}
+
+	for _, entry := range values {
+		if entry.TXT == value {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 type DefaultHostResolver struct {
 	Client dns.Client
 }

@@ -10,6 +10,8 @@ import (
 type Interface interface {
 	// DNSRecords returns a DNSRecordInformer.
 	DNSRecords() DNSRecordInformer
+	// DomainVerifications returns a DomainVerificationInformer.
+	DomainVerifications() DomainVerificationInformer
 }
 
 type version struct {
@@ -26,4 +28,9 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 // DNSRecords returns a DNSRecordInformer.
 func (v *version) DNSRecords() DNSRecordInformer {
 	return &dNSRecordInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// DomainVerifications returns a DomainVerificationInformer.
+func (v *version) DomainVerifications() DomainVerificationInformer {
+	return &domainVerificationInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

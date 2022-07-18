@@ -16,6 +16,10 @@ func (c *FakeKuadrantV1) DNSRecords(namespace string) v1.DNSRecordInterface {
 	return &FakeDNSRecords{c, namespace}
 }
 
+func (c *FakeKuadrantV1) DomainVerifications() v1.DomainVerificationInterface {
+	return &FakeDomainVerifications{c}
+}
+
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeKuadrantV1) RESTClient() rest.Interface {

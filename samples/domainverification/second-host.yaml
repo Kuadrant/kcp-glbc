@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-nondomain
+spec:
+  rules:
+    - host: test.pb-custom.hcpapps.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: httpecho-both
+                port:
+                  number: 80
+    - host: test2.pb-custom.hcpapps.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: httpecho-both
+                port:
+                  number: 80
+          - path: /test2
+            pathType: Prefix
+            backend:
+              service:
+                name: httpecho-both
+                port:
+                  number: 80

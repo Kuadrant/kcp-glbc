@@ -2,6 +2,12 @@ package ingress
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
+
+	v1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
+	"github.com/kuadrant/kcp-glbc/pkg/client/kuadrant/informers/externalversions"
+	"k8s.io/apimachinery/pkg/labels"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -38,16 +44,17 @@ func NewController(config *ControllerConfig) *Controller {
 
 	base := reconciler.NewController(controllerName, queue)
 	c := &Controller{
-		Controller:            base,
-		kubeClient:            config.KubeClient,
-		certProvider:          config.CertProvider,
-		sharedInformerFactory: config.SharedInformerFactory,
-		dnsRecordClient:       config.DnsRecordClient,
-		domain:                config.Domain,
-		tracker:               newTracker(&base.Logger),
-		hostResolver:          hostResolver,
-		hostsWatcher:          net.NewHostsWatcher(&base.Logger, hostResolver, net.DefaultInterval),
-		customHostsEnabled:    config.CustomHostsEnabled,
+		Controller:                    base,
+		kubeClient:                    config.KubeClient,
+		certProvider:                  config.CertProvider,
+		sharedInformerFactory:         config.SharedInformerFactory,
+		kuadrantSharedInformerFactory: config.KuadrantSharedInformerFactory,
+		kuadrantClient:                config.KuadrantClient,
+		domain:                        config.Domain,
+		tracker:                       newTracker(&base.Logger),
+		hostResolver:                  hostResolver,
+		hostsWatcher:                  net.NewHostsWatcher(&base.Logger, hostResolver, net.DefaultInterval),
+		customHostsEnabled:            config.CustomHostsEnabled,
 	}
 	c.Process = c.process
 	c.hostsWatcher.OnChange = c.Enqueue
@@ -82,6 +89,12 @@ func NewController(config *ControllerConfig) *Controller {
 		},
 	})
 
+	c.kuadrantSharedInformerFactory.Kuadrant().V1().DomainVerifications().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.enqueueIngresses(c.ingressesFromDomainVerification),
+		UpdateFunc: c.enqueueIngressesFromUpdate(c.ingressesFromDomainVerification),
+		DeleteFunc: c.enqueueIngresses(c.ingressesFromDomainVerification),
+	})
+
 	c.indexer = c.sharedInformerFactory.Networking().V1().Ingresses().Informer().GetIndexer()
 	c.lister = c.sharedInformerFactory.Networking().V1().Ingresses().Lister()
 
@@ -89,28 +102,30 @@ func NewController(config *ControllerConfig) *Controller {
 }
 
 type ControllerConfig struct {
-	KubeClient            kubernetes.ClusterInterface
-	DnsRecordClient       kuadrantv1.ClusterInterface
-	SharedInformerFactory informers.SharedInformerFactory
-	Domain                string
-	CertProvider          tls.Provider
-	HostResolver          net.HostResolver
-	CustomHostsEnabled    bool
+	KubeClient                    kubernetes.ClusterInterface
+	KuadrantClient                kuadrantv1.ClusterInterface
+	SharedInformerFactory         informers.SharedInformerFactory
+	KuadrantSharedInformerFactory externalversions.SharedInformerFactory
+	Domain                        string
+	CertProvider                  tls.Provider
+	HostResolver                  net.HostResolver
+	CustomHostsEnabled            bool
 }
 
 type Controller struct {
 	*reconciler.Controller
-	kubeClient            kubernetes.ClusterInterface
-	sharedInformerFactory informers.SharedInformerFactory
-	dnsRecordClient       kuadrantv1.ClusterInterface
-	indexer               cache.Indexer
-	lister                networkingv1lister.IngressLister
-	certProvider          tls.Provider
-	domain                string
-	tracker               *tracker
-	hostResolver          net.HostResolver
-	hostsWatcher          *net.HostsWatcher
-	customHostsEnabled    bool
+	kubeClient                    kubernetes.ClusterInterface
+	sharedInformerFactory         informers.SharedInformerFactory
+	kuadrantSharedInformerFactory externalversions.SharedInformerFactory
+	kuadrantClient                kuadrantv1.ClusterInterface
+	indexer                       cache.Indexer
+	lister                        networkingv1lister.IngressLister
+	certProvider                  tls.Provider
+	domain                        string
+	tracker                       *tracker
+	hostResolver                  net.HostResolver
+	hostsWatcher                  *net.HostsWatcher
+	customHostsEnabled            bool
 }
 
 func (c *Controller) process(ctx context.Context, key string) error {
@@ -160,4 +175,60 @@ func (c *Controller) ingressesFromService(obj interface{}) {
 		c.Logger.Info("Enqueuing Ingress reconciliation via tracked Service", "ingress", ingress, "service", service)
 		c.Queue.Add(ingress)
 	}
+}
+
+func (c *Controller) ingressesFromDomainVerification(obj interface{}) ([]*networkingv1.Ingress, error) {
+	dv := obj.(*v1.DomainVerification)
+	domain := strings.ToLower(strings.TrimSpace(dv.Spec.Domain))
+	c.Logger.V(4).Info("finding ingresses based on dv", "domain", domain)
+
+	// no actions to take on ingresses if domains is still not verified yet
+	if !dv.Status.Verified {
+		c.Logger.V(4).Info("dv not verified, exiting", "verified", dv.Status.Verified)
+		return nil, nil
+	}
+
+	// find all ingresses with pending hosts that contain this domains
+	ingressList, err := c.lister.Ingresses("").List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	ingressesToEnqueue := []*networkingv1.Ingress{}
+
+	for _, ingress := range ingressList {
+		ingressNamespaceName := ingress.Namespace + "/" + ingress.Name
+		c.Logger.V(4).Info("checking for pending  host", "ingress", ingressNamespaceName)
+
+		generatedRulesAnnotation, ok := ingress.Annotations[GeneratedRulesAnnotation]
+		if !ok {
+			continue
+		}
+
+		var generatedRules map[string]int
+		if err := json.Unmarshal([]byte(generatedRulesAnnotation), &generatedRules); err != nil {
+			return nil, err
+		}
+
+	PotentialPendingHost:
+		for potentialPending := range generatedRules {
+			if !hostMatches(potentialPending, domain) {
+				continue
+			}
+
+			// If the ingress already has a rule with this domain,
+			// it means it has been already verified. Do not
+			// enqueue
+			for _, rule := range ingress.Spec.Rules {
+				if rule.Host == potentialPending {
+					continue PotentialPendingHost
+				}
+			}
+
+			c.Logger.Info("Enqueuing Ingress reconciliation via domains verification", "ingress", ingressNamespaceName, "domain", domain)
+			ingressesToEnqueue = append(ingressesToEnqueue, ingress)
+		}
+	}
+
+	return ingressesToEnqueue, nil
 }

@@ -9,3 +9,7 @@ type DNSRecordListerExpansion interface{}
 // DNSRecordNamespaceListerExpansion allows custom methods to be added to
 // DNSRecordNamespaceLister.
 type DNSRecordNamespaceListerExpansion interface{}
+
+// DomainVerificationListerExpansion allows custom methods to be added to
+// DomainVerificationLister.
+type DomainVerificationListerExpansion interface{}

@@ -14,6 +14,7 @@ import (
 type KuadrantV1Interface interface {
 	RESTClient() rest.Interface
 	DNSRecordsGetter
+	DomainVerificationsGetter
 }
 
 // KuadrantV1Client is used to interact with features provided by the kuadrant.dev group.
@@ -24,6 +25,10 @@ type KuadrantV1Client struct {
 
 func (c *KuadrantV1Client) DNSRecords(namespace string) DNSRecordInterface {
 	return newDNSRecords(c, namespace)
+}
+
+func (c *KuadrantV1Client) DomainVerifications() DomainVerificationInterface {
+	return newDomainVerifications(c)
 }
 
 // NewForConfig creates a new KuadrantV1Client for the given config.

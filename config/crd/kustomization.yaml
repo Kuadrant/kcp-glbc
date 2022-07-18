@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/kuadrant.dev_dnsrecords.yaml
+- bases/kuadrant.dev_domainverifications.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:

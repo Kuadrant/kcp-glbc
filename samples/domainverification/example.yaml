@@ -1,0 +1,59 @@
+---
+apiVersion: kuadrant.dev/v1
+kind: DomainVerification
+metadata:
+  name: pb-custom.hcpapps.net
+spec:
+  domain: pb-custom.hcpapps.net
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpecho-both
+spec:
+  ports:
+    - name: http-port
+      port: 80
+      targetPort: http-port
+      protocol: TCP
+  selector:
+    app: echo-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echo-server
+  template:
+    metadata:
+      labels:
+        app: echo-server
+    spec:
+      containers:
+        - name: echo-server
+          image: jmalloc/echo-server
+          ports:
+            - name: http-port
+              containerPort: 8080
+              protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-nondomain
+spec:
+  rules:
+    - host: test.pb-custom.hcpapps.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: httpecho-both
+                port:
+                  number: 80

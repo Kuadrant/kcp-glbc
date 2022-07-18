@@ -9,6 +9,7 @@ require (
 	github.com/gocarina/gocsv v0.0.0-20220531201732-5f969b02b902
 	github.com/google/go-cmp v0.5.6
 	github.com/google/uuid v1.3.0
+	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jetstack/cert-manager v1.7.1
 	github.com/kcp-dev/kcp v0.5.0-alpha.1
 	github.com/kcp-dev/kcp/pkg/apis v0.5.0-alpha.1
@@ -64,6 +65,7 @@ require (
 	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
+	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect

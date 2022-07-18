@@ -39,6 +39,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	// Group=kuadrant.dev, Version=v1
 	case v1.SchemeGroupVersion.WithResource("dnsrecords"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kuadrant().V1().DNSRecords().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("domainverifications"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kuadrant().V1().DomainVerifications().Informer()}, nil
 
 	}
 

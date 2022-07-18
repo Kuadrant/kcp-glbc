@@ -27,6 +27,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&DNSRecord{},
 		&DNSRecordList{},
+		&DomainVerificationList{},
+		&DomainVerification{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

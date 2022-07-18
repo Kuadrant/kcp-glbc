@@ -7,10 +7,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-logr/logr"
 	"github.com/rs/xid"
 
 	networkingv1 "k8s.io/api/networking/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
@@ -26,9 +27,14 @@ import (
 )
 
 const (
-	manager                 = "kcp-ingress"
-	cascadeCleanupFinalizer = "kcp.dev/cascade-cleanup"
+	manager                  = "kcp-ingress"
+	cascadeCleanupFinalizer  = "kcp.dev/cascade-cleanup"
+	GeneratedRulesAnnotation = "kuadrant.dev/custom-hosts.generated"
 )
+
+type Pending struct {
+	Rules []networkingv1.IngressRule `json:"rules"`
+}
 
 func (c *Controller) reconcile(ctx context.Context, ingress *networkingv1.Ingress) error {
 	if ingress.DeletionTimestamp != nil && !ingress.DeletionTimestamp.IsZero() {
@@ -64,11 +70,12 @@ func (c *Controller) reconcile(ctx context.Context, ingress *networkingv1.Ingres
 
 	// if custom hosts are not enabled all the hosts in the ingress
 	// will be replaced to the generated host
-	if !c.customHostsEnabled {
-		err := c.replaceCustomHosts(ingress)
-		if err != nil {
-			return err
-		}
+	customHostsLogic := c.replaceCustomHosts
+	if c.customHostsEnabled {
+		customHostsLogic = c.processCustomHostValidation
+	}
+	if err := customHostsLogic(ctx, ingress); err != nil {
+		return err
 	}
 
 	// setup certificates
@@ -102,7 +109,7 @@ func (c *Controller) ensureCertificate(ctx context.Context, ingress *networkingv
 		return nil
 	}
 	err = c.certProvider.Create(ctx, controlClusterContext)
-	if err != nil && !errors.IsAlreadyExists(err) {
+	if err != nil && !apierrors.IsAlreadyExists(err) {
 		return err
 	}
 
@@ -130,8 +137,8 @@ func upsertTLS(ingress *networkingv1.Ingress, host, secretName string) {
 func (c *Controller) ensureDNS(ctx context.Context, ingress *networkingv1.Ingress) error {
 	if ingress.DeletionTimestamp != nil && !ingress.DeletionTimestamp.IsZero() {
 		// delete DNSRecord
-		err := c.dnsRecordClient.Cluster(logicalcluster.From(ingress)).KuadrantV1().DNSRecords(ingress.Namespace).Delete(ctx, ingress.Name, metav1.DeleteOptions{})
-		if err != nil && !errors.IsNotFound(err) {
+		err := c.kuadrantClient.Cluster(logicalcluster.From(ingress)).KuadrantV1().DNSRecords(ingress.Namespace).Delete(ctx, ingress.Name, metav1.DeleteOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 		return nil
@@ -156,16 +163,16 @@ func (c *Controller) ensureDNS(ctx context.Context, ingress *networkingv1.Ingres
 		}
 
 		// Attempt to retrieve the existing DNSRecord for this Ingress
-		existing, err := c.dnsRecordClient.Cluster(logicalcluster.From(ingress)).KuadrantV1().DNSRecords(ingress.Namespace).Get(ctx, ingress.Name, metav1.GetOptions{})
+		existing, err := c.kuadrantClient.Cluster(logicalcluster.From(ingress)).KuadrantV1().DNSRecords(ingress.Namespace).Get(ctx, ingress.Name, metav1.GetOptions{})
 		// If it doesn't exist, create it
-		if err != nil && errors.IsNotFound(err) {
+		if err != nil && apierrors.IsNotFound(err) {
 			// Create the DNSRecord object
 			record := &v1.DNSRecord{}
 			if err := c.setDnsRecordFromIngress(ctx, ingress, record); err != nil {
 				return err
 			}
 			// Create the resource in the cluster
-			existing, err = c.dnsRecordClient.Cluster(logicalcluster.From(record)).KuadrantV1().DNSRecords(record.Namespace).Create(ctx, record, metav1.CreateOptions{})
+			existing, err = c.kuadrantClient.Cluster(logicalcluster.From(record)).KuadrantV1().DNSRecords(record.Namespace).Create(ctx, record, metav1.CreateOptions{})
 			if err != nil {
 				return err
 			}
@@ -182,7 +189,7 @@ func (c *Controller) ensureDNS(ctx context.Context, ingress *networkingv1.Ingres
 			if err != nil {
 				return err
 			}
-			_, err = c.dnsRecordClient.Cluster(logicalcluster.From(existing)).KuadrantV1().DNSRecords(existing.Namespace).Patch(ctx, existing.Name, types.ApplyPatchType, data, metav1.PatchOptions{FieldManager: manager, Force: pointer.Bool(true)})
+			_, err = c.kuadrantClient.Cluster(logicalcluster.From(existing)).KuadrantV1().DNSRecords(existing.Namespace).Patch(ctx, existing.Name, types.ApplyPatchType, data, metav1.PatchOptions{FieldManager: manager, Force: pointer.Bool(true)})
 			if err != nil {
 				return err
 			}
@@ -300,7 +307,11 @@ func ingressKey(ingress *networkingv1.Ingress) interface{} {
 	return cache.ExplicitKey(key)
 }
 
-func (c *Controller) replaceCustomHosts(ingress *networkingv1.Ingress) error {
+func (c *Controller) replaceCustomHosts(_ context.Context, ingress *networkingv1.Ingress) error {
+	if ingress.Annotations == nil {
+		ingress.Annotations = map[string]string{}
+	}
+
 	generatedHost := ingress.Annotations[cluster.ANNOTATION_HCG_HOST]
 	var hosts []string
 	for i, rule := range ingress.Spec.Rules {
@@ -319,6 +330,159 @@ func (c *Controller) replaceCustomHosts(ingress *networkingv1.Ingress) error {
 	}
 
 	return nil
+}
+
+func (c *Controller) processCustomHostValidation(ctx context.Context, ingress *networkingv1.Ingress) error {
+	dvs, err := c.kuadrantClient.Cluster(logicalcluster.From(ingress)).KuadrantV1().DomainVerifications().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	if err != nil {
+		return err
+	}
+
+	return doProcessCustomHostValidation(c.Logger, dvs, ingress)
+}
+
+func doProcessCustomHostValidation(logger logr.Logger, dvs *v1.DomainVerificationList, ingress *networkingv1.Ingress) error {
+	if ingress.Annotations == nil {
+		ingress.Annotations = map[string]string{}
+	}
+
+	// Ensure the custom hosts replaced annotation is deleted, in case
+	// the custom hosts feature was previously disabled
+	delete(ingress.Annotations, cluster.ANNOTATION_HCG_CUSTOM_HOST_REPLACED)
+
+	generatedHost, ok := ingress.Annotations[cluster.ANNOTATION_HCG_HOST]
+	if !ok || generatedHost == "" {
+		return fmt.Errorf("generated host is empty for ingress: '%v/%v'", ingress.Namespace, ingress.Name)
+	}
+
+	var hosts []string
+
+	preservedRules := make([]networkingv1.IngressRule, 0)
+
+	// map[Custom domain] => Index of the generated rule for the domain
+	generatedRules := map[string]int{}
+	i := 0
+
+	currentGeneratedRules := map[string]int{}
+	// If the annotation has already been set, start by preserving the
+	// current generated rules
+	if annotationValue, ok := ingress.Annotations[GeneratedRulesAnnotation]; ok {
+		if err := json.Unmarshal([]byte(annotationValue), &currentGeneratedRules); err != nil {
+			return err
+		}
+
+		for host, ruleIndex := range currentGeneratedRules {
+			rule := ingress.Spec.Rules[ruleIndex].DeepCopy()
+			preservedRules = append(preservedRules, *rule)
+			generatedRules[host] = i
+			i++
+		}
+	}
+
+	// Create a generated rule from each custom domain
+	for _, rule := range ingress.Spec.Rules {
+		// ignore any rules for generated hosts (these are recalculated later)
+		if rule.Host == generatedHost {
+			continue
+		}
+
+		dv := findDomainVerification(ingress, rule.Host, dvs.Items)
+
+		// check against domainverification status
+		if dv != nil && dv.Status.Verified {
+			preservedRules = append(preservedRules, rule)
+			i++
+		} else if strings.TrimSpace(rule.Host) != "" {
+			hosts = append(hosts, rule.Host)
+		}
+
+		// if the host already has a generated rule, skip it
+		if _, ok := generatedRules[rule.Host]; ok {
+			continue
+		}
+
+		// Duplicate the rule and keep the association host => index
+		generatedHostRule := *rule.DeepCopy()
+		generatedHostRule.Host = generatedHost
+		preservedRules = append(preservedRules, generatedHostRule)
+		generatedRules[rule.Host] = i
+		i++
+	}
+	ingress.Spec.Rules = preservedRules
+
+	// Save the generated rules association in the annotation
+	generatedHosts, err := json.Marshal(generatedRules)
+	if err != nil {
+		return err
+	}
+	ingress.Annotations[GeneratedRulesAnnotation] = string(generatedHosts)
+
+	// Ensure that every custom domain that has been verified is preserved
+GeneratedRulesLoop:
+	for host, generatedIndex := range generatedRules {
+		// Validate the index hasn't been corrupted
+		if generatedIndex < 0 || generatedIndex >= len(ingress.Spec.Rules) {
+			logger.Info(fmt.Sprintf("invalid index for domain %s in %s annotation", host, GeneratedRulesAnnotation))
+			continue
+		}
+
+		// If the domain hasn't been verified, do not include the rule
+		dv := findDomainVerification(ingress, host, dvs.Items)
+		if dv == nil || !dv.Status.Verified {
+			continue
+		}
+
+		// If the rule already has been included, skip it
+		for _, rule := range ingress.Spec.Rules {
+			if rule.Host == host {
+				continue GeneratedRulesLoop
+			}
+		}
+
+		// Create a copy of the generated rule and set the custom host
+		generatedRule := ingress.Spec.Rules[generatedIndex]
+		customDomainRule := generatedRule.DeepCopy()
+		customDomainRule.Host = host
+
+		ingress.Spec.Rules = append(ingress.Spec.Rules, *customDomainRule)
+	}
+
+	// clean up replaced hosts from the tls list
+	removeHostsFromTLS(hosts, ingress)
+
+	return nil
+}
+
+func findDomainVerification(ingress *networkingv1.Ingress, host string, dvs []v1.DomainVerification) *v1.DomainVerification {
+	if strings.TrimSpace(host) == "" {
+		return nil
+	}
+
+	for _, dv := range dvs {
+		if hostMatches(host, dv.Spec.Domain) {
+			return &dv
+		}
+	}
+
+	return nil
+}
+
+func hostMatches(host, domain string) bool {
+	parentHostParts := strings.SplitN(host, ".", 2)
+
+	if len(parentHostParts) < 2 {
+		return false
+	}
+
+	if parentHostParts[1] == domain {
+		return true
+	}
+
+	return hostMatches(parentHostParts[1], domain)
 }
 
 func removeHostsFromTLS(hostsToRemove []string, ingress *networkingv1.Ingress) {

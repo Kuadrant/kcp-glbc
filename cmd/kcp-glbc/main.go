@@ -25,15 +25,19 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
+	gonet "net"
+
 	"github.com/kcp-dev/logicalcluster"
 
 	kuadrantv1 "github.com/kuadrant/kcp-glbc/pkg/client/kuadrant/clientset/versioned"
 	"github.com/kuadrant/kcp-glbc/pkg/client/kuadrant/informers/externalversions"
+	"github.com/kuadrant/kcp-glbc/pkg/dns"
 	"github.com/kuadrant/kcp-glbc/pkg/log"
 	"github.com/kuadrant/kcp-glbc/pkg/metrics"
 	"github.com/kuadrant/kcp-glbc/pkg/net"
 	"github.com/kuadrant/kcp-glbc/pkg/reconciler/deployment"
-	"github.com/kuadrant/kcp-glbc/pkg/reconciler/dns"
+	dnsreconciler "github.com/kuadrant/kcp-glbc/pkg/reconciler/dns"
+	"github.com/kuadrant/kcp-glbc/pkg/reconciler/domainverification"
 	"github.com/kuadrant/kcp-glbc/pkg/reconciler/ingress"
 	"github.com/kuadrant/kcp-glbc/pkg/reconciler/service"
 	tlsreconciler "github.com/kuadrant/kcp-glbc/pkg/reconciler/tls"
@@ -215,12 +219,13 @@ func main() {
 	exitOnError(err, "Failed to create TLS certificate controller")
 
 	ingressController := ingress.NewController(&ingress.ControllerConfig{
-		KubeClient:            kcpKubeClient,
-		DnsRecordClient:       kcpKuadrantClient,
-		SharedInformerFactory: kcpKubeInformerFactory,
-		Domain:                options.Domain,
-		CertProvider:          certProvider,
-		HostResolver:          net.NewDefaultHostResolver(),
+		KubeClient:                    kcpKubeClient,
+		KuadrantClient:                kcpKuadrantClient,
+		SharedInformerFactory:         kcpKubeInformerFactory,
+		KuadrantSharedInformerFactory: kcpKuadrantInformerFactory,
+		Domain:                        options.Domain,
+		CertProvider:                  certProvider,
+		HostResolver:                  net.NewDefaultHostResolver(),
 		// For testing. TODO: Make configurable through flags/env variable
 		// HostResolver: &net.ConfigMapHostResolver{
 		// 	Name:      "hosts",
@@ -229,7 +234,7 @@ func main() {
 		CustomHostsEnabled: options.EnableCustomHosts,
 	})
 
-	dnsRecordController, err := dns.NewController(&dns.ControllerConfig{
+	dnsRecordController, err := dnsreconciler.NewController(&dnsreconciler.ControllerConfig{
 		DnsRecordClient:       kcpKuadrantClient,
 		SharedInformerFactory: kcpKuadrantInformerFactory,
 		DNSProvider:           options.DNSProvider,
@@ -247,6 +252,20 @@ func main() {
 		SharedInformerFactory: kcpKubeInformerFactory,
 	})
 	exitOnError(err, "Failed to create Deployment controller")
+
+	domainVerificationController, err := domainverification.NewController(&domainverification.ControllerConfig{
+		DomainVerificationClient: kcpKuadrantClient,
+		SharedInformerFactory:    kcpKuadrantInformerFactory,
+		DNSVerifier:              dns.NewVerifier(gonet.DefaultResolver),
+		// For testing. TODO: Make configurable through flags/env variable
+		// DNSVerifier: &net.ConfigMapHostResolver{
+		// 	Name:      "hosts",
+		// 	Namespace: "default",
+		// 	Client:    kcpKubeClient.Cluster(logicalcluster.New(options.GLBCWorkspace)),
+		// },
+	})
+
+	exitOnError(err, "Failed to create DomainVerification controller")
 
 	kcpKubeInformerFactory.Start(ctx.Done())
 	kcpKubeInformerFactory.WaitForCacheSync(ctx.Done())
@@ -267,6 +286,7 @@ func main() {
 	}
 	start(gCtx, serviceController)
 	start(gCtx, deploymentController)
+	start(gCtx, domainVerificationController)
 
 	g.Go(func() error {
 		// wait until the controllers have return before stopping serving metrics
