@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build performance
 
 /*
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,8 +19,6 @@ package support
 import (
 	"github.com/google/uuid"
 	"github.com/onsi/gomega"
-
-	"github.com/kcp-dev/logicalcluster"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,7 +41,7 @@ func createTestNamespace(t Test, options ...Option) *corev1.Namespace {
 		t.Expect(option.applyTo(namespace)).To(gomega.Succeed())
 	}
 
-	namespace, err := t.Client().Core().Cluster(logicalcluster.From(namespace)).CoreV1().Namespaces().Create(t.Ctx(), namespace, metav1.CreateOptions{})
+	namespace, err := t.Client().Core().CoreV1().Namespaces().Create(t.Ctx(), namespace, metav1.CreateOptions{})
 	t.Expect(err).NotTo(gomega.HaveOccurred())
 
 	return namespace
@@ -51,7 +49,7 @@ func createTestNamespace(t Test, options ...Option) *corev1.Namespace {
 
 func deleteTestNamespace(t Test, namespace *corev1.Namespace) {
 	propagationPolicy := metav1.DeletePropagationBackground
-	err := t.Client().Core().Cluster(logicalcluster.From(namespace)).CoreV1().Namespaces().Delete(t.Ctx(), namespace.Name, metav1.DeleteOptions{
+	err := t.Client().Core().CoreV1().Namespaces().Delete(t.Ctx(), namespace.Name, metav1.DeleteOptions{
 		PropagationPolicy: &propagationPolicy,
 	})
 	t.Expect(err).NotTo(gomega.HaveOccurred())

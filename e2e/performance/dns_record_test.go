@@ -13,9 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/kcp-dev/logicalcluster"
-
-	. "github.com/kuadrant/kcp-glbc/e2e/support"
+	. "github.com/kuadrant/kcp-glbc/e2e/performance/support"
 	kuadrantv1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
 	"github.com/kuadrant/kcp-glbc/pkg/util/env"
 )
@@ -44,7 +42,7 @@ func createTestDNSRecord(t Test, namespace *corev1.Namespace, domain string) *ku
 		},
 	}
 
-	dnsRecord, err := t.Client().Kuadrant().Cluster(logicalcluster.From(namespace)).KuadrantV1().DNSRecords(namespace.Name).Create(t.Ctx(), dnsRecord, metav1.CreateOptions{})
+	dnsRecord, err := t.Client().Kuadrant().KuadrantV1().DNSRecords(namespace.Name).Create(t.Ctx(), dnsRecord, metav1.CreateOptions{})
 	t.Expect(err).NotTo(HaveOccurred())
 
 	return dnsRecord
@@ -52,7 +50,7 @@ func createTestDNSRecord(t Test, namespace *corev1.Namespace, domain string) *ku
 
 func deleteTestDNSRecord(t Test, dnsRecord *kuadrantv1.DNSRecord) {
 	propagationPolicy := metav1.DeletePropagationBackground
-	err := t.Client().Kuadrant().Cluster(logicalcluster.From(dnsRecord)).KuadrantV1().DNSRecords(dnsRecord.Namespace).Delete(t.Ctx(), dnsRecord.Name, metav1.DeleteOptions{
+	err := t.Client().Kuadrant().KuadrantV1().DNSRecords(dnsRecord.Namespace).Delete(t.Ctx(), dnsRecord.Name, metav1.DeleteOptions{
 		PropagationPolicy: &propagationPolicy,
 	})
 	t.Expect(err).NotTo(HaveOccurred())
@@ -70,18 +68,11 @@ func TestDNSRecord(t *testing.T) {
 	glbcDomain := os.Getenv("GLBC_DOMAIN")
 	test.Expect(glbcDomain).NotTo(Equal(""))
 
-	// Get the test workspace
-	workspace := getTestWorkspace()
-
-	// Check the APIs are imported into the test workspace
-	test.Eventually(HasImportedAPIs(test, workspace, kuadrantv1.SchemeGroupVersion.WithKind("DNSRecord"))(test)).
-		Should(BeTrue())
-
 	// Create a namespace
-	namespace := test.NewTestNamespace(InWorkspace(workspace))
+	namespace := test.NewTestNamespace()
 	test.Expect(namespace).NotTo(BeNil())
 
-	dnsRecordCount := env.GetEnvInt(testDNSRecordCount, defaultTestDNSRecordCount)
+	dnsRecordCount := env.GetEnvInt(TestDNSRecordCount, DefaultTestDNSRecordCount)
 	test.Expect(dnsRecordCount > 0).To(BeTrue())
 	test.T().Log(fmt.Sprintf("Creating %d DNSRecords", dnsRecordCount))
 

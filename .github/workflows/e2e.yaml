@@ -214,15 +214,21 @@ jobs:
           # Then run e2e tests
           make e2e
       - name: Run performance tests
+        env:
+          TEST_DNSRECORD_COUNT: 1
+          TEST_INGRESS_COUNT: 1
         run: |
           # Note: This doesn't really apply much load, but we run it here to ensure the tests are run on PRs
           export KUBECONFIG=${{ env.KUBECONFIG }}
-          export CLUSTERS_KUBECONFIG_DIR=${{ env.CLUSTERS_KUBECONFIG_DIR }}
           export AWS_DNS_PUBLIC_ZONE_ID=${{ env.AWS_DNS_PUBLIC_ZONE_ID }}
           export GLBC_DOMAIN=dev.hcpapps.net
+          echo "TEST_INGRESS_COUNT = ${{ env.TEST_INGRESS_COUNT }}"
+          echo "TEST_DNSRECORD_COUNT = ${{ env.TEST_DNSRECORD_COUNT }}"
 
           echo "Switching to kcp-glbc-user workspace"
           ./bin/kubectl-kcp workspace use root:default:kcp-glbc-user
+
+          kubectl config get-contexts
 
           # Then run performance tests
           make performance

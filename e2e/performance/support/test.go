@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build performance
 
 /*
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,10 +24,6 @@ import (
 	"github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-
-	apisv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/apis/v1alpha1"
-	tenancyv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/tenancy/v1alpha1"
-	workloadv1alpha1 "github.com/kcp-dev/kcp/pkg/apis/workload/v1alpha1"
 )
 
 type Test interface {
@@ -37,10 +33,7 @@ type Test interface {
 
 	gomega.Gomega
 
-	NewTestWorkspace() *tenancyv1alpha1.ClusterWorkspace
-	NewAPIBinding(name string, options ...Option) *apisv1alpha1.APIBinding
 	NewTestNamespace(...Option) *corev1.Namespace
-	NewWorkloadCluster(name string, options ...Option) *workloadv1alpha1.WorkloadCluster
 }
 
 type Option interface {
@@ -97,37 +90,10 @@ func (t *T) Client() Client {
 	return t.client
 }
 
-func (t *T) NewTestWorkspace() *tenancyv1alpha1.ClusterWorkspace {
-	workspace := createTestWorkspace(t)
-	t.T().Cleanup(func() {
-		deleteTestWorkspace(t, workspace)
-	})
-	t.Eventually(Workspace(t, workspace.Name)).Should(gomega.WithTransform(
-		ConditionStatus(tenancyv1alpha1.WorkspaceScheduled),
-		gomega.Equal(corev1.ConditionTrue),
-	))
-	return workspace
-}
-
-func (t *T) NewAPIBinding(name string, options ...Option) *apisv1alpha1.APIBinding {
-	return createAPIBinding(t, name, options...)
-}
-
 func (t *T) NewTestNamespace(options ...Option) *corev1.Namespace {
 	namespace := createTestNamespace(t, options...)
 	t.T().Cleanup(func() {
 		deleteTestNamespace(t, namespace)
 	})
 	return namespace
-}
-
-func (t *T) NewWorkloadCluster(name string, options ...Option) *workloadv1alpha1.WorkloadCluster {
-	workloadCluster, cleanup := createWorkloadCluster(t, name, options...)
-	t.T().Cleanup(func() {
-		deleteWorkloadCluster(t, workloadCluster)
-	})
-	t.T().Cleanup(func() {
-		t.Expect(cleanup()).To(gomega.Succeed())
-	})
-	return workloadCluster
 }

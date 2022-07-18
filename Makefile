@@ -79,15 +79,11 @@ e2e: build
 
 TEST_DNSRECORD_COUNT ?= 2
 TEST_INGRESS_COUNT ?= 2
-TEST_ORGANISATION ?= default
-TEST_WORKSPACE ?= kcp-glbc-user
 .PHONY: performance
 performance: build
 	@date +"Performance Test Start: %s%3N"
 	KUBECONFIG="$(KUBECONFIG)" \
 	AWS_DNS_PUBLIC_ZONE_ID="$(AWS_DNS_PUBLIC_ZONE_ID)" \
-	TEST_ORGANISATION="$(TEST_ORGANISATION)" \
-	TEST_WORKSPACE="$(TEST_WORKSPACE)" \
 	TEST_DNSRECORD_COUNT="$(TEST_DNSRECORD_COUNT)" \
 	TEST_INGRESS_COUNT="$(TEST_INGRESS_COUNT)" \
 	go test -count=1 -timeout 60m -v ./e2e/performance -tags=performance

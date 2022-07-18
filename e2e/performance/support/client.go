@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build performance
 
 /*
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,34 +21,26 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	kcp "github.com/kcp-dev/kcp/pkg/client/clientset/versioned"
-
 	kuadrantv1 "github.com/kuadrant/kcp-glbc/pkg/client/kuadrant/clientset/versioned"
 )
 
 type Client interface {
-	Core() kubernetes.ClusterInterface
-	Kcp() kcp.ClusterInterface
-	Kuadrant() kuadrantv1.ClusterInterface
+	Core() *kubernetes.Clientset
+	Kuadrant() *kuadrantv1.Clientset
 	GetConfig() *rest.Config
 }
 
 type client struct {
-	core     kubernetes.ClusterInterface
-	kcp      kcp.ClusterInterface
-	kuadrant kuadrantv1.ClusterInterface
+	core     *kubernetes.Clientset
+	kuadrant *kuadrantv1.Clientset
 	config   *rest.Config
 }
 
-func (c *client) Core() kubernetes.ClusterInterface {
+func (c *client) Core() *kubernetes.Clientset {
 	return c.core
 }
 
-func (c *client) Kcp() kcp.ClusterInterface {
-	return c.kcp
-}
-
-func (c *client) Kuadrant() kuadrantv1.ClusterInterface {
+func (c *client) Kuadrant() *kuadrantv1.Clientset {
 	return c.kuadrant
 }
 
@@ -59,31 +51,23 @@ func (c *client) GetConfig() *rest.Config {
 func newTestClient() (Client, error) {
 	cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		clientcmd.NewDefaultClientConfigLoadingRules(),
-		&clientcmd.ConfigOverrides{
-			CurrentContext: "system:admin",
-		}).ClientConfig()
+		&clientcmd.ConfigOverrides{}).ClientConfig()
 	if err != nil {
 		return nil, err
 	}
 
-	kubeClient, err := kubernetes.NewClusterForConfig(cfg)
+	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	kcpClient, err := kcp.NewClusterForConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	kuandrantClient, err := kuadrantv1.NewClusterForConfig(cfg)
+	kuandrantClient, err := kuadrantv1.NewForConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	return &client{
 		core:     kubeClient,
-		kcp:      kcpClient,
 		kuadrant: kuandrantClient,
 		config:   cfg,
 	}, nil

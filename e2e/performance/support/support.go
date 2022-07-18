@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build performance
 
 /*
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,22 +17,23 @@ limitations under the License.
 package support
 
 import (
-	"crypto/x509"
-	"encoding/pem"
-	"errors"
+	"time"
 
-	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func CertificateFrom(secret *corev1.Secret) (*x509.Certificate, error) {
-	certBytes := secret.Data["tls.crt"]
-	pemBlock, _ := pem.Decode(certBytes)
-	if pemBlock == nil {
-		return nil, errors.New("failed to decode certificate")
-	}
-	cert, err := x509.ParseCertificate(pemBlock.Bytes)
-	if err != nil {
-		return nil, err
-	}
-	return cert, err
-}
+const (
+	TestTimeoutShort  = 1 * time.Minute
+	TestTimeoutMedium = 5 * time.Minute
+	TestTimeoutLong   = 10 * time.Minute
+
+	TestDNSRecordCount = "TEST_DNSRECORD_COUNT"
+	TestIngressCount   = "TEST_INGRESS_COUNT"
+
+	DefaultTestDNSRecordCount = 1
+	DefaultTestIngressCount   = 1
+)
+
+var (
+	ApplyOptions = metav1.ApplyOptions{FieldManager: "kcp-glbc-e2e", Force: true}
+)
