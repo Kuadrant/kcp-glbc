@@ -3,5 +3,3 @@ namespace: system
 resources:
   - namespace.yaml
   - service_account.yaml
-  - glbc_role.yaml
-  - glbc_role_binding.yaml
