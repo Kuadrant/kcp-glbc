@@ -176,8 +176,8 @@ jobs:
           kubectl --kubeconfig="${CLUSTERS_KUBECONFIG_DIR}"/kcp-cluster-2.kubeconfig apply -f kcp-cluster-2-syncer.yaml
 
           echo "Enabling advanced scheduling"
-          kubectl annotate --overwrite workloadcluster kcp-cluster-1 featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
-          kubectl annotate --overwrite workloadcluster kcp-cluster-2 featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
+          kubectl annotate --overwrite synctarget kcp-cluster-1 featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
+          kubectl annotate --overwrite synctarget kcp-cluster-2 featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
 
           echo "Checking all workload clusters are ready"
           kubectl wait --timeout=300s --for=condition=Ready=true synctargets kcp-cluster-1 kcp-cluster-2
