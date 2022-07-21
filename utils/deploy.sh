@@ -22,7 +22,7 @@ source "${DEPLOY_SCRIPT_DIR}"/.setupEnv
 source "${DEPLOY_SCRIPT_DIR}"/.startUtils
 
 #Workspace
-ORG_WORKSPACE=root:users
+ORG_WORKSPACE=root:users:ev:vo:system-apiserver
 GLBC_WORKSPACE=kcp-glbc
 GLBC_WORKSPACE_COMPUTE=${GLBC_WORKSPACE}-compute
 GLBC_WORKSPACE_USER=${GLBC_WORKSPACE}-user
@@ -220,6 +220,10 @@ set -e pipefail
 print_env
 echo "Continuing in 10 seconds, Ctrl+C to stop ..."
 sleep 10
+
+## Needed to do this first to avoid error: `clusterworkspaces.tenancy.kcp.dev "system-apiserver" not found` errors
+## It seems like the default home workspace `root:users:ev:vo:system-apiserver` isn't created until you first run this command
+${KUBECTL_KCP_BIN} workspace
 
 ## Check we are targeting a kcp instance
 kubectl get workspaces > /dev/null || (echo "You must be targeting a KCP API Server, check your current KUBECONIFG and context before continuing!" && exit 1)
