@@ -129,7 +129,7 @@ create_ns() {
 create_workload_cluster() {
   kubectl get synctargets ${GLBC_WORKLOAD_CLUSTER_NAME} || {
     echo "Creating workload cluster '${1}'"
-    ${KUBECTL_KCP_BIN} workload sync ${1} --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services > ${GLBC_KUSTOMIZATION}/${1}-syncer.yaml
+    ${KUBECTL_KCP_BIN} workload sync ${1} --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${GLBC_KUSTOMIZATION}/${1}-syncer.yaml
     echo "Apply the following syncer config to the intended physical cluster."
     echo ""
     echo "   kubectl apply -f ${GLBC_KUSTOMIZATION}/${1}-syncer.yaml"
