@@ -92,11 +92,11 @@ The e2e tests can be executed locally by running the following commands:
 ```bash
 # Start KCP and the KinD clusters
 $ make local-setup
-export KUBECONFIG=$(pwd)/.kcp/admin.kubeconfig
+export KUBECONFIG=config/deploy/local/kcp.kubeconfig
+./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc
 export CLUSTERS_KUBECONFIG_DIR=$(pwd)/tmp
 export AWS_DNS_PUBLIC_ZONE_ID=YOUR_ZONE_ID
 ./bin/kubectl-kcp workspace use root:default:kcp-glbc
-./bin/kcp-glbc --kubeconfig .kcp/admin.kubeconfig --context system:admin
 # Start KCP GLBC
 $ ./bin/kcp-glbc --kubeconfig .kcp/admin.kubeconfig --context system:admin --dns-provider fake
 # Run the e2e test suite
@@ -147,8 +147,8 @@ sudo systemctl start docker
 **Kind cluster failed to become ready - Check logs for errors:**
 Attempt the following to confirm if *kcp-cluster-1* and *kcp-cluster-2* are in a READY state:
 ```bash
-KUBECONFIG=config/deploy/local/kcp.kubeconfig ./bin/kubectl-kcp workspace use root:default:kcp-glbc-user-compute
-Current workspace is "root:default:kcp-glbc-user-compute".
+KUBECONFIG=config/deploy/local/kcp.kubeconfig ./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc-user-compute
+Current workspace is "root:users:ev:vo:system-apiserver:kcp-glbc-user-compute".
 ```
 ```bash
 kubectl get workloadclusters -o wide

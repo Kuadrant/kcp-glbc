@@ -43,20 +43,20 @@ The following workspaces are created:
 
 ```shell
 $ ./bin/kubectl-kcp workspace
-Current workspace is "root:default".
+Current workspace is "root:users:ev:vo:system-apiserver".
 $ ./bin/kubectl-kcp workspace list
 NAME                    TYPE        PHASE   URL
-kcp-glbc                Universal   Ready   https://192.168.0.103:6443/clusters/root:default:kcp-glbc
-kcp-glbc-compute        Universal   Ready   https://192.168.0.103:6443/clusters/root:default:kcp-glbc-compute
-kcp-glbc-user           Universal   Ready   https://192.168.0.103:6443/clusters/root:default:kcp-glbc-user
-kcp-glbc-user-compute   Universal   Ready   https://192.168.0.103:6443/clusters/root:default:kcp-glbc-user-compute
+kcp-glbc                Universal   Ready   https://192.168.0.103:6443/clusters/root:users:ev:vo:system-apiserver:kcp-glbc
+kcp-glbc-compute        Universal   Ready   https://192.168.0.103:6443/clusters/root:users:ev:vo:system-apiserver:kcp-glbc-compute
+kcp-glbc-user           Universal   Ready   https://192.168.0.103:6443/clusters/root:users:ev:vo:system-apiserver:kcp-glbc-user
+kcp-glbc-user-compute   Universal   Ready   https://192.168.0.103:6443/clusters/root:users:ev:vo:system-apiserver:kcp-glbc-user-compute
 ```
 
 **kcp-glbc**
 
 ```shell
-$ ./bin/kubectl-kcp workspace use root:default:kcp-glbc
-Current workspace is "root:default:kcp-glbc".
+$ ./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc
+Current workspace is "root:users:ev:vo:system-apiserver:kcp-glbc".
 $ kubectl get apiexports
 NAME                  AGE
 cert-manager-stable   16m
@@ -74,8 +74,8 @@ cert-manager   cert-manager   1/1     1            1           15m
 **kcp-glbc-compute**
 
 ```shell
-$ ./bin/kubectl-kcp workspace use root:default:kcp-glbc-compute
-Current workspace is "root:default:kcp-glbc-compute".
+$ ./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc-compute
+Current workspace is "root:users:ev:vo:system-apiserver:kcp-glbc-compute".
 $ kubectl get workloadclusters -o wide
 NAME   LOCATION   READY   SYNCED API RESOURCES
 glbc   glbc       True    
@@ -95,8 +95,8 @@ services.v1.core
 **kcp-glbc-user**
 
 ```shell
-$ ./bin/kubectl-kcp workspace use root:default:kcp-glbc-user
-Current workspace is "root:default:kcp-glbc-user".
+$ ./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc-user
+Current workspace is "root:users:ev:vo:system-apiserver:kcp-glbc-user".
 $ kubectl get apiexports
 No resources found
 $ kubectl get apibindings
@@ -110,8 +110,8 @@ No resources found
 **kcp-glbc-user-compute**
 
 ```shell
-$ ./bin/kubectl-kcp workspace use root:default:kcp-glbc-user-compute
-Current workspace is "root:default:kcp-glbc-user-compute".
+$ ./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc-user-compute
+Current workspace is "root:users:ev:vo:system-apiserver:kcp-glbc-user-compute".
 $ kubectl get workloadclusters -o wide
 NAME            LOCATION        READY   SYNCED API RESOURCES
 kcp-cluster-1   kcp-cluster-1   True    
@@ -139,7 +139,7 @@ $ ./utils/deploy.sh
 
 Check the deployment:
 ```shell
-$ ./bin/kubectl-kcp workspace use root:default:kcp-glbc
+$ ./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc
 $ kubectl get deployments --all-namespaces
 NAMESPACE      NAME                          READY   UP-TO-DATE   AVAILABLE   AGE
 cert-manager   cert-manager                  1/1     1            1           30m
@@ -161,8 +161,8 @@ Test the deployment using the sample service.
 
 ```shell
 $ export KUBECONFIG=.kcp/admin.kubeconfig
-$ ./bin/kubectl-kcp workspace use root:default:kcp-glbc-user
-Current workspace is "root:default:kcp-glbc-user".
+$ ./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc-user
+Current workspace is "root:users:ev:vo:system-apiserver:kcp-glbc-user".
 $ kubectl apply -f samples/echo-service/echo.yaml
 service/httpecho-both created
 deployment.apps/echo-deployment created
@@ -181,8 +181,8 @@ Check what cluster was selected for the deployment:
 ```shell
 $ kubectl get ns default -o json | jq .metadata.annotations
 {
-  "internal.scheduling.kcp.dev/negotiation-workspace": "root:default:kcp-glbc-user-compute",
-  "scheduling.kcp.dev/placement": "{\"root:default:kcp-glbc-user-compute+location-1+kcp-cluster-1\":\"Pending\"}"
+  "internal.scheduling.kcp.dev/negotiation-workspace": "root:users:ev:vo:system-apiserver:kcp-glbc-user-compute",
+  "scheduling.kcp.dev/placement": "{\"root:users:ev:vo:system-apiserver:kcp-glbc-user-compute+location-1+kcp-cluster-1\":\"Pending\"}"
 }
 $ kubectl get ns default -o json | jq .metadata.labels
 {
