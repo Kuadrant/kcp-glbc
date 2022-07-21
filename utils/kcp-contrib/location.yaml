@@ -6,4 +6,4 @@ spec:
   resource:
     group: "workload.kcp.dev"
     version: "v1alpha1"
-    resource: "workloadclusters"
+    resource: "synctargets"
