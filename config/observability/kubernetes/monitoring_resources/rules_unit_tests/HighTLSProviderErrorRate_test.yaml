@@ -1,0 +1,26 @@
+rule_files:
+  - ../rules-glbc.yaml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: glbc_tls_certificate_request_errors_total{pod="glbc"}
+        values: "0+0x60 2+2x65"
+      - series: glbc_tls_certificate_request_total{pod="glbc"}
+        values: "100+100x125"
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: HighTLSProviderErrorRate
+        exp_alerts: []
+      - eval_time: 125m
+        alertname: HighTLSProviderErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              pod: glbc
+            exp_annotations:
+              summary: 'High TLS Provider Error Rate'
+              description: 'Excessive errors - The error rate is 0.02, which is greater than the threshold which is 1%'
+              runbook_url: 'https://github.com/Kuadrant/kcp-glbc/blob/main/docs/observability/runbooks/HighTLSProviderErrorRate.adoc'

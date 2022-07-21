@@ -1,0 +1,48 @@
+// begin header
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+:numbered:
+:toc: macro
+:toc-title: pass:[<b>Table of Contents</b>]
+// end header
+= HighTLSProviderLatencyAlert
+
+toc::[]
+
+== Description
+
+The source of the alert is the `glbc_tls_certificate_*` metric. It fires when there is high latency rate on the requests made.
+The alert will be triggered if requests are taking longer than 0.5 seconds. This usually means, the TLS certificate provider is not responding, metrics is misconfigured, or the metrics endpoint is not responding.
+
+== Prerequisites
+
+// Include the following steps in every alert SOP
+* Access to the physical cluster where GLBC should be running
+
+== Execute/Resolution
+
+. Check the TLS cert provider & namespace for indications of problems.
++
+[source,sh]
+----
+kubectl logs deployment/kcp-glbc-controller-manager
+kubectl get events
+----
+. The following link shows how to https://cert-manager.io/docs/faq/troubleshooting/#troubleshooting-a-failed-certificate-request[Troubleshoot a Failed Certificate Request].
+You will find:
+- How to check the Certificate resource.
+- How to check the CertificateRequest
+- How to check the issuer state.
+. https://cert-manager.io/docs/faq/acme/[Troubleshooting Issuing ACME Certificates] such as Let's Encrypt.
+
+
+
+== Validate
+
+. Check the alert is no longer firing.
+// Add any extra steps
