@@ -22,7 +22,7 @@ source "${DEPLOY_SCRIPT_DIR}"/.setupEnv
 source "${DEPLOY_SCRIPT_DIR}"/.startUtils
 
 #Workspace
-ORG_WORKSPACE=root:default
+ORG_WORKSPACE=root:users
 GLBC_WORKSPACE=kcp-glbc
 GLBC_WORKSPACE_COMPUTE=${GLBC_WORKSPACE}-compute
 GLBC_WORKSPACE_USER=${GLBC_WORKSPACE}-user
@@ -71,6 +71,10 @@ help()
 print_env()
 {
    echo "Current deployment configuration"
+   echo
+   echo "KubeConfig:"
+   echo
+   echo "  KUBECONFIG:                    ${KUBECONFIG}"
    echo
    echo "Workspaces:"
    echo
@@ -123,7 +127,7 @@ create_ns() {
 }
 
 create_workload_cluster() {
-  kubectl get workloadclusters ${GLBC_WORKLOAD_CLUSTER_NAME} || {
+  kubectl get synctargets ${GLBC_WORKLOAD_CLUSTER_NAME} || {
     echo "Creating workload cluster '${1}'"
     ${KUBECTL_KCP_BIN} workload sync ${1} --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services > ${GLBC_KUSTOMIZATION}/${1}-syncer.yaml
     echo "Apply the following syncer config to the intended physical cluster."
@@ -136,7 +140,7 @@ create_workload_cluster() {
   if [[ $WAIT_WC_READY = "true" ]]; then
     echo "This script will automatically continue once the cluster is synced!"
     echo "Waiting for workload cluster ${1} to be ready ..."
-    kubectl wait --timeout=300s --for=condition=Ready=true workloadclusters ${1}
+    kubectl wait --timeout=300s --for=condition=Ready=true synctargets ${1}
   fi
 }
 
@@ -218,7 +222,7 @@ echo "Continuing in 10 seconds, Ctrl+C to stop ..."
 sleep 10
 
 ## Check we are targeting a kcp instance
-${KUBECTL_KCP_BIN} workspace list > /dev/null || (echo "You must be targeting a KCP API Server, check your current KUBECONIFG and context before continuing!" && exit 1)
+kubectl get workspaces > /dev/null || (echo "You must be targeting a KCP API Server, check your current KUBECONIFG and context before continuing!" && exit 1)
 
 ## Get the ca data for this KCP if it exists, used later to inject into generated kubeconfigs
 caData=$(kubectl config view --raw -o json | jq -r '.clusters[0].cluster."certificate-authority-data"' | tr -d '"')

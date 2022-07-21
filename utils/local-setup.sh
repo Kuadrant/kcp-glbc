@@ -70,7 +70,7 @@ KCP_GLBC_CLUSTER_NAME="${KIND_CLUSTER_PREFIX}glbc-control"
 KUBECONFIG_GLBC=config/deploy/local/kcp.kubeconfig
 KUBECONFIG_GLBC_USER=.kcp/admin.kubeconfig
 
-: ${KCP_VERSION:="release-0.5"}
+: ${KCP_VERSION:="release-0.6"}
 KCP_SYNCER_IMAGE="ghcr.io/kcp-dev/kcp/syncer:${KCP_VERSION}"
 
 : ${GLBC_DEPLOY_COMPONENTS:="cert-manager"}
@@ -113,9 +113,9 @@ EOF
   ${KIND_BIN} get kubeconfig --internal --name=${cluster} > ${TEMP_DIR}/${cluster}.kubeconfig.internal
 }
 
-createWorkloadCluster() {
+createSyncTarget() {
   [[ ! -z "$4" ]] && clusterName=${4} || clusterName=${1}
-  echo "Creating KCP WorkloadCluster (${clusterName})"
+  echo "Creating KCP SyncTarget (${clusterName})"
   createCluster $1 $2 $3
 
   kubectl config use-context kind-${1}
@@ -128,16 +128,16 @@ createWorkloadCluster() {
   kubectl -n ingress-nginx wait --timeout=300s --for=condition=Available deployments --all
 }
 
-createUserWorkloadCluster() {
-  createWorkloadCluster $1 $2 $3 $4
+createUserSyncTarget() {
+  createSyncTarget $1 $2 $3 $4
   echo "Deploying kcp syncer to ${1}"
   KUBECONFIG=${KUBECONFIG_GLBC} kubectl create namespace kcp-syncer --dry-run=client -o yaml | kubectl --kubeconfig=${KUBECONFIG_GLBC} apply -f -
   KUBECONFIG=${KUBECONFIG_GLBC} ${KUBECTL_KCP_BIN} workload sync ${clusterName} --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services >${TEMP_DIR}/${clusterName}-syncer.yaml
 
   # Enable advanced scheduling
   echo "Enabling advanced scheduling"
-  KUBECONFIG=${KUBECONFIG_GLBC} kubectl annotate --overwrite workloadcluster ${clusterName} featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
-  KUBECONFIG=${KUBECONFIG_GLBC} kubectl get workloadclusters ${clusterName} -o json | jq .metadata.annotations
+  KUBECONFIG=${KUBECONFIG_GLBC} kubectl annotate --overwrite synctarget ${clusterName} featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
+  KUBECONFIG=${KUBECONFIG_GLBC} kubectl get synctargets ${clusterName} -o json | jq .metadata.annotations
 
   kubectl apply -f ${TEMP_DIR}/${clusterName}-syncer.yaml
 }
@@ -169,12 +169,12 @@ wait_for "grep 'Ready to start controllers' ${KCP_LOG_FILE}" "kcp" "1m" "5"
 #2. Setup workspaces (kcp-glbc, kcp-glbc-compute, kcp-glbc-user, kcp-glbc-user-compute)
 KUBECONFIG=${KUBECONFIG_GLBC} GLBC_USER_WORKLOAD_CLUSTER_NAME=${KIND_CLUSTER_PREFIX}1 ${SCRIPT_DIR}/deploy.sh -c "none"
 
-#3. Create GLBC workload cluster and wait for it to be ready
-createWorkloadCluster $KCP_GLBC_CLUSTER_NAME 8081 8444 "glbc"
+#3. Create GLBC sync target and wait for it to be ready
+createSyncTarget $KCP_GLBC_CLUSTER_NAME 8081 8444 "glbc"
 kubectl apply -f config/deploy/local/glbc-syncer.yaml
 
 KUBECONFIG=${KUBECONFIG_GLBC} ${KUBECTL_KCP_BIN} workspace use "root:default:kcp-glbc-compute"
-KUBECONFIG=${KUBECONFIG_GLBC} kubectl wait --timeout=300s --for=condition=Ready=true workloadclusters "glbc"
+KUBECONFIG=${KUBECONFIG_GLBC} kubectl wait --timeout=300s --for=condition=Ready=true synctargets "glbc"
 
 #4. Deploy GLBC components
 KUBECONFIG=${KUBECONFIG_GLBC} GLBC_USER_WORKLOAD_CLUSTER_NAME=${KIND_CLUSTER_PREFIX}1 ${SCRIPT_DIR}/deploy.sh -c ${GLBC_DEPLOY_COMPONENTS}
@@ -188,18 +188,18 @@ kubectl --kubeconfig=${KUBECONFIG_GLBC} create namespace kcp-glbc --dry-run=clie
 go run ${SCRIPT_DIR}/certman-issuer/ --glbc-kubeconfig ${KUBECONFIG_GLBC}
 go run ${SCRIPT_DIR}/certman-issuer/ --glbc-kubeconfig ${KUBECONFIG_GLBC} --issuer-namespace=kcp-glbc
 
-#5. Create User workload clusters and wait for them to be ready
+#5. Create User sync target clusters and wait for them to be ready
 KUBECONFIG=${KUBECONFIG_GLBC} ${KUBECTL_KCP_BIN} workspace use "root:default:kcp-glbc-user-compute"
-echo "Creating $NUM_CLUSTERS kcp workload cluster(s)"
+echo "Creating $NUM_CLUSTERS kcp SyncTarget cluster(s)"
 port80=8082
 port443=8445
 for cluster in $CLUSTERS; do
-  createUserWorkloadCluster "$cluster" $port80 $port443
+  createUserSyncTarget "$cluster" $port80 $port443
   port80=$((port80 + 1))
   port443=$((port443 + 1))
 done
 
-KUBECONFIG=${KUBECONFIG_GLBC} kubectl wait --timeout=300s --for=condition=Ready=true workloadclusters $CLUSTERS
+KUBECONFIG=${KUBECONFIG_GLBC} kubectl wait --timeout=300s --for=condition=Ready=true synctargets $CLUSTERS
 
 #6. Switch to user workspace
 KUBECONFIG=${KUBECONFIG_GLBC_USER} ${KUBECTL_KCP_BIN} workspace use "root:default:kcp-glbc-user"
