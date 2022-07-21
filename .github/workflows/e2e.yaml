@@ -169,7 +169,7 @@ jobs:
           echo "Exporting KUBECONFIG=${KUBECONFIG}"
           ./bin/kubectl-kcp workspace use "root:default:kcp-glbc-user-compute"
           kubectl create namespace kcp-syncer --dry-run=client -o yaml | kubectl apply -f -
-          export KCP_SYNCER_IMAGE=ghcr.io/kcp-dev/kcp/syncer:release-0.5
+          export KCP_SYNCER_IMAGE=ghcr.io/kcp-dev/kcp/syncer:release-0.6
           ./bin/kubectl-kcp workload sync kcp-cluster-1 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services | kubectl --kubeconfig="${CLUSTERS_KUBECONFIG_DIR}"/kcp-cluster-1.kubeconfig apply -f -
           ./bin/kubectl-kcp workload sync kcp-cluster-2 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services | kubectl --kubeconfig="${CLUSTERS_KUBECONFIG_DIR}"/kcp-cluster-2.kubeconfig apply -f -
 

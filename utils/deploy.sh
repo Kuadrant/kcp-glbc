@@ -32,7 +32,7 @@ GLBC_WORKSPACE_USER_COMPUTE=${GLBC_WORKSPACE_USER}-compute
 : ${GLBC_WORKLOAD_CLUSTER_NAME:=glbc}
 : ${GLBC_USER_WORKLOAD_CLUSTER_NAME:=glbc-user}
 
-: ${KCP_VERSION:="release-0.5"}
+: ${KCP_VERSION:="release-0.6"}
 KCP_SYNCER_IMAGE="ghcr.io/kcp-dev/kcp/syncer:${KCP_VERSION}"
 
 # GLBC Deployment
