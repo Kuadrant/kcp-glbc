@@ -155,11 +155,11 @@ jobs:
           kubectl apply -f config/deploy/local/glbc-syncer.yaml
 
           echo "Checking glbc workload cluster is ready"
-          KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workspace use "root:default:kcp-glbc-compute"
+          KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workspace use "root:users:ev:vo:system-apiserver:kcp-glbc-compute"
           KUBECONFIG=.kcp/admin.kubeconfig kubectl wait --timeout=300s --for=condition=Ready=true workloadclusters "glbc"
 
           echo "Deploy GLBC components (cert-manager)"
-          KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workspace use "root:default:kcp-glbc"
+          KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workspace use "root:users:ev:vo:system-apiserver:kcp-glbc"
           KUBECONFIG=.kcp/admin.kubeconfig GLBC_USER_WORKLOAD_CLUSTER_NAME=kcp-cluster-1 ./utils/deploy.sh -c "cert-manager"
           KUBECONFIG=.kcp/admin.kubeconfig  kubectl -n cert-manager wait --timeout=300s --for=condition=Available deployments --all
 
@@ -167,7 +167,7 @@ jobs:
           export KUBECONFIG="$(pwd)"/.kcp/admin.kubeconfig
           echo "KUBECONFIG=${KUBECONFIG}" >> $GITHUB_ENV
           echo "Exporting KUBECONFIG=${KUBECONFIG}"
-          ./bin/kubectl-kcp workspace use "root:default:kcp-glbc-user-compute"
+          ./bin/kubectl-kcp workspace use "root:users:ev:vo:system-apiserver:kcp-glbc-user-compute"
           kubectl create namespace kcp-syncer --dry-run=client -o yaml | kubectl apply -f -
           export KCP_SYNCER_IMAGE=ghcr.io/kcp-dev/kcp/syncer:release-0.6
           ./bin/kubectl-kcp workload sync kcp-cluster-1 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services | kubectl --kubeconfig="${CLUSTERS_KUBECONFIG_DIR}"/kcp-cluster-1.kubeconfig apply -f -
@@ -185,7 +185,7 @@ jobs:
           export AWS_DNS_PUBLIC_ZONE_ID=FAKE_ZONE_ID
           echo "AWS_DNS_PUBLIC_ZONE_ID=FAKE_ZONE_ID" >> $GITHUB_ENV
           echo "Starting GLBC, sending logs to ${GLBC_LOG_FILE}"
-          ./bin/kubectl-kcp workspace use root:default:kcp-glbc
+          ./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc
           go run ./utils/certman-issuer/ --glbc-kubeconfig .kcp/admin.kubeconfig
           ./bin/kcp-glbc --kubeconfig .kcp/admin.kubeconfig --context system:admin --dns-provider fake --glbc-tls-provided true > ${GLBC_LOG_FILE} 2>&1 &
           GLBC_PID=$!
@@ -200,7 +200,7 @@ jobs:
           fi
 
           echo "Switching to kcp-glbc-user workspace"
-          ./bin/kubectl-kcp workspace use root:default:kcp-glbc-user
+          ./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc-user
 
           kubectl --kubeconfig=${KUBECONFIG_GLBC_USER} label namespace default experimental.workload.kcp.dev/scheduling-disabled="true"
           kubectl --kubeconfig=${KUBECONFIG_GLBC_USER} annotate namespace default scheduling.kcp.dev/placement-

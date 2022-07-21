@@ -44,10 +44,10 @@ Now you can create a new ingress resource from the root of the project:
 
 ```bash 
 export KUBECONFIG=.kcp/admin.kubeconfig
-./bin/kubectl-kcp workspace use root:default:kcp-glbc-user
+./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc-user
 kubectl apply -f samples/echo-service/echo.yaml
 ```
-N.B. It's important that you use the `.kcp/admin.kubeconfig` kube config and switch to the `root:default:kcp-glbc-user` workspace.
+N.B. It's important that you use the `.kcp/admin.kubeconfig` kube config and switch to the `root:users:ev:vo:system-apiserver:kcp-glbc-user` workspace.
 
 To verify the resources were created successfully, check the output of the following:
 
@@ -93,7 +93,7 @@ The e2e tests can be executed locally by running the following commands:
 # Start KCP and the KinD clusters
 $ make local-setup
 export KUBECONFIG=config/deploy/local/kcp.kubeconfig
-./bin/kubectl-kcp workspace use root:default:kcp-glbc
+./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc
 ./bin/kcp-glbc --kubeconfig .kcp/admin.kubeconfig --context system:admin
 # Start KCP GLBC
 $ ./bin/kcp-glbc --kubeconfig .kcp/admin.kubeconfig --context system:admin --dns-provider fake
@@ -145,8 +145,8 @@ sudo systemctl start docker
 **Kind cluster failed to become ready - Check logs for errors:**
 Attempt the following to confirm if *kcp-cluster-1* and *kcp-cluster-2* are in a READY state:
 ```bash
-KUBECONFIG=config/deploy/local/kcp.kubeconfig ./bin/kubectl-kcp workspace use root:default:kcp-glbc-user-compute
-Current workspace is "root:default:kcp-glbc-user-compute".
+KUBECONFIG=config/deploy/local/kcp.kubeconfig ./bin/kubectl-kcp workspace use root:users:ev:vo:system-apiserver:kcp-glbc-user-compute
+Current workspace is "root:users:ev:vo:system-apiserver:kcp-glbc-user-compute".
 ```
 ```bash
 kubectl get workloadclusters -o wide
