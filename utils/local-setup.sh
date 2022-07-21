@@ -133,7 +133,7 @@ createUserSyncTarget() {
   createSyncTarget $1 $2 $3 $4
   echo "Deploying kcp syncer to ${1}"
   KUBECONFIG=${KUBECONFIG_GLBC} kubectl create namespace kcp-syncer --dry-run=client -o yaml | kubectl --kubeconfig=${KUBECONFIG_GLBC} apply -f -
-  KUBECONFIG=${KUBECONFIG_GLBC} ${KUBECTL_KCP_BIN} workload sync ${clusterName} --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services >${TEMP_DIR}/${clusterName}-syncer.yaml
+  KUBECONFIG=${KUBECONFIG_GLBC} ${KUBECTL_KCP_BIN} workload sync ${clusterName} --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${TEMP_DIR}/${clusterName}-syncer.yaml
 
   # Enable advanced scheduling
   echo "Enabling advanced scheduling"
