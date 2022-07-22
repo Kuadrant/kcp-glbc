@@ -152,7 +152,7 @@ fi
 
 #1. Start KCP
 echo "Starting KCP, sending logs to ${KCP_LOG_FILE}"
-${KCP_BIN} start --discovery-poll-interval 3s --run-controllers > ${KCP_LOG_FILE} 2>&1 &
+${KCP_BIN} start --run-controllers > ${KCP_LOG_FILE} 2>&1 &
 KCP_PID=$!
 
 if ! ps -p ${KCP_PID}; then
