@@ -22,7 +22,7 @@ source "${DEPLOY_SCRIPT_DIR}"/.setupEnv
 source "${DEPLOY_SCRIPT_DIR}"/.startUtils
 
 #Workspace
-ORG_WORKSPACE=root:users:ev:vo:system-apiserver
+ORG_WORKSPACE=root:default
 GLBC_WORKSPACE=kcp-glbc
 GLBC_WORKSPACE_COMPUTE=${GLBC_WORKSPACE}-compute
 GLBC_WORKSPACE_USER=${GLBC_WORKSPACE}-user

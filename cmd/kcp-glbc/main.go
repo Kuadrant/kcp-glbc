@@ -79,8 +79,8 @@ func init() {
 	// KCP client options
 	flagSet.StringVar(&options.Kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	flagSet.StringVar(&options.Kubecontext, "context", env.GetEnvString("GLBC_KCP_CONTEXT", ""), "Context to use in the Kubeconfig file, instead of the current context")
-	flagSet.StringVar(&options.ComputeWorkspace, "compute-workspace", env.GetEnvString("GLBC_COMPUTE_WORKSPACE", "root:users:ev:vo:system-apiserver:kcp-glbc-user-compute"), "The user compute workspace")
-	flagSet.StringVar(&options.GLBCWorkspace, "glbc-workspace", env.GetEnvString("GLBC_WORKSPACE", "root:users:ev:vo:system-apiserver:kcp-glbc"), "The GLBC workspace")
+	flagSet.StringVar(&options.ComputeWorkspace, "compute-workspace", env.GetEnvString("GLBC_COMPUTE_WORKSPACE", "root:default:kcp-glbc-user-compute"), "The user compute workspace")
+	flagSet.StringVar(&options.GLBCWorkspace, "glbc-workspace", env.GetEnvString("GLBC_WORKSPACE", "root:default:kcp-glbc"), "The GLBC workspace")
 	flagSet.StringVar(&options.LogicalClusterTarget, "logical-cluster", env.GetEnvString("GLBC_LOGICAL_CLUSTER_TARGET", "*"), "set the target logical cluster")
 	// TLS certificate issuance options
 	flagSet.BoolVar(&options.TLSProviderEnabled, "glbc-tls-provided", env.GetEnvBool("GLBC_TLS_PROVIDED", true), "Whether to generate TLS certificates for hosts")

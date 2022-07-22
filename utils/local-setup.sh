@@ -66,7 +66,7 @@ KCP_LOG_FILE="${TEMP_DIR}"/kcp.log
 
 KIND_CLUSTER_PREFIX="kcp-cluster-"
 KCP_GLBC_CLUSTER_NAME="${KIND_CLUSTER_PREFIX}glbc-control"
-ORG_WORKSPACE=root:users:ev:vo:system-apiserver
+ORG_WORKSPACE=root:default
 
 KUBECONFIG_GLBC=config/deploy/local/kcp.kubeconfig
 KUBECONFIG_GLBC_USER=.kcp/admin.kubeconfig
@@ -167,6 +167,9 @@ wait_for "grep 'Bootstrapped ClusterWorkspaceShard root|root' ${KCP_LOG_FILE}" "
 sleep 5
 
 (cd ${KCP_GLBC_DIR} && make generate-ld-config)
+
+KUBECONFIG=${KUBECONFIG_GLBC} ${KUBECTL_KCP_BIN} workspace use "root"
+KUBECONFIG=${KUBECONFIG_GLBC} ${KUBECTL_KCP_BIN} workspace create "default" --type universal --enter
 
 #2. Setup workspaces (kcp-glbc, kcp-glbc-compute, kcp-glbc-user, kcp-glbc-user-compute)
 KUBECONFIG=${KUBECONFIG_GLBC} GLBC_USER_WORKLOAD_CLUSTER_NAME=${KIND_CLUSTER_PREFIX}1 ${SCRIPT_DIR}/deploy.sh -c "none"
