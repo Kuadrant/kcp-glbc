@@ -163,7 +163,8 @@ if ! ps -p ${KCP_PID}; then
 fi
 
 echo "Waiting for KCP server to be ready..."
-wait_for "grep 'Ready to start controllers' ${KCP_LOG_FILE}" "kcp" "1m" "5"
+wait_for "grep 'Bootstrapped ClusterWorkspaceShard root|root' ${KCP_LOG_FILE}" "kcp" "1m" "5"
+sleep 5
 
 (cd ${KCP_GLBC_DIR} && make generate-ld-config)
 
