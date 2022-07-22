@@ -92,11 +92,12 @@ The e2e tests can be executed locally by running the following commands:
 ```bash
 # Start KCP and the KinD clusters
 $ make local-setup
-export KUBECONFIG=$(pwd)/.kcp/admin.kubeconfig
-export CLUSTERS_KUBECONFIG_DIR=$(pwd)/tmp
-export AWS_DNS_PUBLIC_ZONE_ID=YOUR_ZONE_ID
+export KUBECONFIG=config/deploy/local/kcp.kubeconfig
 ./bin/kubectl-kcp workspace use root:default:kcp-glbc
 ./bin/kcp-glbc --kubeconfig .kcp/admin.kubeconfig --context system:admin
+export CLUSTERS_KUBECONFIG_DIR=$(pwd)/tmp
+export AWS_DNS_PUBLIC_ZONE_ID=YOUR_ZONE_ID
+
 # Start KCP GLBC
 $ ./bin/kcp-glbc --kubeconfig .kcp/admin.kubeconfig --context system:admin --dns-provider fake
 # Run the e2e test suite

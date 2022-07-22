@@ -135,7 +135,7 @@ jobs:
           KCP_LOG_FILE="${TEMP_DIR}"/kcp.log
           echo "KCP_LOG_FILE=${KCP_LOG_FILE}" >> $GITHUB_ENV
           echo "Starting KCP, sending logs to ${KCP_LOG_FILE}"
-          ./bin/kcp start --discovery-poll-interval 3s --run-controllers > ${KCP_LOG_FILE} 2>&1 &
+          ./bin/kcp start --run-controllers > ${KCP_LOG_FILE} 2>&1 &
           KCP_PID=$!
           echo "KCP_PID=${KCP_PID}" >> $GITHUB_ENV
 
@@ -147,6 +147,9 @@ jobs:
             exit 1
           fi
 
+          KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workspace use "root"
+          KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workspace create "default" --type universal --enter
+
           echo "Setup workspaces (kcp-glbc, kcp-glbc-compute, kcp-glbc-user, kcp-glbc-user-compute)"
           KUBECONFIG=.kcp/admin.kubeconfig GLBC_USER_WORKLOAD_CLUSTER_NAME=kcp-cluster-1 ./utils/deploy.sh -c "none"
 
@@ -156,7 +159,7 @@ jobs:
 
           echo "Checking glbc workload cluster is ready"
           KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workspace use "root:default:kcp-glbc-compute"
-          KUBECONFIG=.kcp/admin.kubeconfig kubectl wait --timeout=300s --for=condition=Ready=true workloadclusters "glbc"
+          KUBECONFIG=.kcp/admin.kubeconfig kubectl wait --timeout=300s --for=condition=Ready=true synctargets "glbc"
 
           echo "Deploy GLBC components (cert-manager)"
           KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workspace use "root:default:kcp-glbc"
@@ -169,16 +172,18 @@ jobs:
           echo "Exporting KUBECONFIG=${KUBECONFIG}"
           ./bin/kubectl-kcp workspace use "root:default:kcp-glbc-user-compute"
           kubectl create namespace kcp-syncer --dry-run=client -o yaml | kubectl apply -f -
-          export KCP_SYNCER_IMAGE=ghcr.io/kcp-dev/kcp/syncer:release-0.5
-          ./bin/kubectl-kcp workload sync kcp-cluster-1 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services | kubectl --kubeconfig="${CLUSTERS_KUBECONFIG_DIR}"/kcp-cluster-1.kubeconfig apply -f -
-          ./bin/kubectl-kcp workload sync kcp-cluster-2 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services | kubectl --kubeconfig="${CLUSTERS_KUBECONFIG_DIR}"/kcp-cluster-2.kubeconfig apply -f -
+          export KCP_SYNCER_IMAGE=ghcr.io/kcp-dev/kcp/syncer:release-0.6
+          ./bin/kubectl-kcp workload sync kcp-cluster-1 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file kcp-cluster-1-syncer.yaml
+          kubectl --kubeconfig="${CLUSTERS_KUBECONFIG_DIR}"/kcp-cluster-1.kubeconfig apply -f kcp-cluster-1-syncer.yaml
+          ./bin/kubectl-kcp workload sync kcp-cluster-2 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file kcp-cluster-2-syncer.yaml
+          kubectl --kubeconfig="${CLUSTERS_KUBECONFIG_DIR}"/kcp-cluster-2.kubeconfig apply -f kcp-cluster-2-syncer.yaml
 
           echo "Enabling advanced scheduling"
-          kubectl annotate --overwrite workloadcluster kcp-cluster-1 featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
-          kubectl annotate --overwrite workloadcluster kcp-cluster-2 featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
+          kubectl annotate --overwrite synctarget kcp-cluster-1 featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
+          kubectl annotate --overwrite synctarget kcp-cluster-2 featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
 
           echo "Checking all workload clusters are ready"
-          kubectl wait --timeout=300s --for=condition=Ready=true workloadclusters kcp-cluster-1 kcp-cluster-2
+          kubectl wait --timeout=300s --for=condition=Ready=true synctargets kcp-cluster-1 kcp-cluster-2
 
           GLBC_LOG_FILE="${TEMP_DIR}"/glbc.log
           echo "GLBC_LOG_FILE=${GLBC_LOG_FILE}" >> $GITHUB_ENV

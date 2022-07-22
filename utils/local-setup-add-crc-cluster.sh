@@ -51,7 +51,7 @@ PULL_SECRET=~/pull-secret
 
 KUBECTL_KCP_BIN="./bin/kubectl-kcp"
 
-: ${KCP_VERSION:="release-0.5"}
+: ${KCP_VERSION:="release-0.6"}
 KCP_SYNCER_IMAGE="ghcr.io/kcp-dev/kcp/syncer:${KCP_VERSION}"
 
 crc config set enable-cluster-monitoring true
