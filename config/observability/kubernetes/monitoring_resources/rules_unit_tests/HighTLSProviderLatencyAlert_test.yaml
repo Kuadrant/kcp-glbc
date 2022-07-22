@@ -1,0 +1,25 @@
+rule_files:
+  - ../rules-glbc.yaml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: glbc_tls_certificate_issuance_duration_seconds_sum{pod="glbc"}
+        values: "0+0x60 0+6x65"
+      - series: glbc_tls_certificate_issuance_duration_seconds_count{pod="glbc"}
+        values: "0+0x60 0+10x65"
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: HighTLSProviderLatencyAlert
+        exp_alerts: []
+      - eval_time: 125m
+        alertname: HighTLSProviderLatencyAlert
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 'High TLS Latency Rate Alert'
+              description: 'High latency rate when requesting TLS - The latency rate is 0.6000000000000001 seconds, which is greater than our threshold which is 0.5seconds.'
+              runbook_url: 'https://github.com/Kuadrant/kcp-glbc/blob/main/docs/observability/runbooks/HighTLSProviderLatencyAlert.adoc'
