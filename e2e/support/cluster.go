@@ -140,7 +140,7 @@ type workloadClusterConfig struct {
 	syncer         syncer
 }
 
-func createWorkloadCluster(t Test, name string, options ...Option) (*workloadv1alpha1.WorkloadCluster, func() error) {
+func createSyncTarget(t Test, name string, options ...Option) (*workloadv1alpha1.SyncTarget, func() error) {
 	config := &workloadClusterConfig{
 		name: name,
 	}
@@ -157,17 +157,17 @@ func createWorkloadCluster(t Test, name string, options ...Option) (*workloadv1a
 	t.Expect(err).NotTo(gomega.HaveOccurred())
 
 	// Get the workload cluster and return it
-	workloadCluster, err := t.Client().Kcp().Cluster(config.workspace).WorkloadV1alpha1().WorkloadClusters().Get(t.Ctx(), name, metav1.GetOptions{})
+	syncTarget, err := t.Client().Kcp().Cluster(config.workspace).WorkloadV1alpha1().SyncTargets().Get(t.Ctx(), name, metav1.GetOptions{})
 	t.Expect(err).NotTo(gomega.HaveOccurred())
 
-	return workloadCluster, cleanup
+	return syncTarget, cleanup
 }
 
-func deleteWorkloadCluster(t Test, workloadCluster *workloadv1alpha1.WorkloadCluster) {
+func deleteSyncTarget(t Test, syncTarget *workloadv1alpha1.SyncTarget) {
 	// It's not possible to use foreground propagation policy as kcp doesn't currently support
 	// garbage collection.
 	propagationPolicy := metav1.DeletePropagationBackground
-	err := t.Client().Kcp().Cluster(logicalcluster.From(workloadCluster)).WorkloadV1alpha1().WorkloadClusters().Delete(t.Ctx(), workloadCluster.Name, metav1.DeleteOptions{PropagationPolicy: &propagationPolicy})
+	err := t.Client().Kcp().Cluster(logicalcluster.From(syncTarget)).WorkloadV1alpha1().SyncTargets().Delete(t.Ctx(), syncTarget.Name, metav1.DeleteOptions{PropagationPolicy: &propagationPolicy})
 	t.Expect(err).NotTo(gomega.HaveOccurred())
 }
 
@@ -188,7 +188,7 @@ func applyKcpWorkloadSync(t Test, config *workloadClusterConfig) (func() error, 
 	requiredResourcesToSync := sets.NewString("deployments.apps", "secrets", "configmaps", "serviceaccounts")
 	userResourcesToSync := sets.NewString(config.syncer.resourcesToSync...)
 	resourcesToSync := userResourcesToSync.Union(requiredResourcesToSync).List()
-	err = plugin.Sync(t.Ctx(), config.name, config.syncer.namespace, config.syncer.image, resourcesToSync, config.syncer.replicas)
+	err = plugin.Sync(t.Ctx(), "-", config.name, config.syncer.namespace, config.syncer.namespace, config.syncer.image, resourcesToSync, config.syncer.replicas, 0, 0)
 	if err != nil {
 		return cleanup, err
 	}
@@ -263,9 +263,9 @@ func applyKcpWorkloadSync(t Test, config *workloadClusterConfig) (func() error, 
 	return cleanup, nil
 }
 
-func WorkloadCluster(t Test, workspace, name string) func(g gomega.Gomega) *workloadv1alpha1.WorkloadCluster {
-	return func(g gomega.Gomega) *workloadv1alpha1.WorkloadCluster {
-		c, err := t.Client().Kcp().Cluster(logicalcluster.New(workspace)).WorkloadV1alpha1().WorkloadClusters().Get(t.Ctx(), name, metav1.GetOptions{})
+func SyncTarget(t Test, workspace, name string) func(g gomega.Gomega) *workloadv1alpha1.SyncTarget {
+	return func(g gomega.Gomega) *workloadv1alpha1.SyncTarget {
+		c, err := t.Client().Kcp().Cluster(logicalcluster.New(workspace)).WorkloadV1alpha1().SyncTargets().Get(t.Ctx(), name, metav1.GetOptions{})
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		return c
 	}
