@@ -77,6 +77,18 @@ e2e: build
 	KUBECONFIG="$(KUBECONFIG)" CLUSTERS_KUBECONFIG_DIR="$(CLUSTERS_KUBECONFIG_DIR)" \
 	go test -timeout 60m -v ./e2e -tags=e2e
 
+TEST_DNSRECORD_COUNT ?= 2
+TEST_INGRESS_COUNT ?= 2
+.PHONY: performance
+performance: build
+	@date +"Performance Test Start: %s%3N"
+	KUBECONFIG="$(KUBECONFIG)" \
+	AWS_DNS_PUBLIC_ZONE_ID="$(AWS_DNS_PUBLIC_ZONE_ID)" \
+	TEST_DNSRECORD_COUNT="$(TEST_DNSRECORD_COUNT)" \
+	TEST_INGRESS_COUNT="$(TEST_INGRESS_COUNT)" \
+	go test -count=1 -timeout 60m -v ./e2e/performance -tags=performance
+	@date +"Performance Test End: %s%3N"
+
 ##@ CI
 
 #Note, these targets are expected to run in a clean CI environment.

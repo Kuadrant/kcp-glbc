@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build performance
 
 /*
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,14 +17,10 @@ limitations under the License.
 package support
 
 import (
-	"crypto/x509"
-
 	"github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/kcp-dev/logicalcluster"
 )
 
 func GetSecret(t Test, namespace *corev1.Namespace, name string) *corev1.Secret {
@@ -34,7 +30,7 @@ func GetSecret(t Test, namespace *corev1.Namespace, name string) *corev1.Secret 
 
 func Secret(t Test, namespace *corev1.Namespace, name string) func(g gomega.Gomega) *corev1.Secret {
 	return func(g gomega.Gomega) *corev1.Secret {
-		secret, err := t.Client().Core().Cluster(logicalcluster.From(namespace)).CoreV1().Secrets(namespace.Name).Get(t.Ctx(), name, metav1.GetOptions{})
+		secret, err := t.Client().Core().CoreV1().Secrets(namespace.Name).Get(t.Ctx(), name, metav1.GetOptions{})
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		return secret
 	}
@@ -47,12 +43,8 @@ func GetSecrets(t Test, namespace *corev1.Namespace, labelSelector string) []cor
 
 func Secrets(t Test, namespace *corev1.Namespace, labelSelector string) func(g gomega.Gomega) []corev1.Secret {
 	return func(g gomega.Gomega) []corev1.Secret {
-		secrets, err := t.Client().Core().Cluster(logicalcluster.From(namespace)).CoreV1().Secrets(namespace.Name).List(t.Ctx(), metav1.ListOptions{LabelSelector: labelSelector})
+		secrets, err := t.Client().Core().CoreV1().Secrets(namespace.Name).List(t.Ctx(), metav1.ListOptions{LabelSelector: labelSelector})
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		return secrets.Items
 	}
-}
-
-func Certificate(secret *corev1.Secret) (*x509.Certificate, error) {
-	return CertificateFrom(secret)
 }

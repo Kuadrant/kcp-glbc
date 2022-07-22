@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build performance
 
 /*
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,8 +22,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/kcp-dev/logicalcluster"
-
 	kuadrantv1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
 )
 
@@ -34,7 +32,7 @@ func GetDNSRecord(t Test, namespace *corev1.Namespace, name string) *kuadrantv1.
 
 func DNSRecord(t Test, namespace *corev1.Namespace, name string) func(g gomega.Gomega) *kuadrantv1.DNSRecord {
 	return func(g gomega.Gomega) *kuadrantv1.DNSRecord {
-		dnsRecord, err := t.Client().Kuadrant().Cluster(logicalcluster.From(namespace)).KuadrantV1().DNSRecords(namespace.Name).Get(t.Ctx(), name, metav1.GetOptions{})
+		dnsRecord, err := t.Client().Kuadrant().KuadrantV1().DNSRecords(namespace.Name).Get(t.Ctx(), name, metav1.GetOptions{})
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		return dnsRecord
 	}
@@ -47,7 +45,7 @@ func GetDNSRecords(t Test, namespace *corev1.Namespace, labelSelector string) []
 
 func DNSRecords(t Test, namespace *corev1.Namespace, labelSelector string) func(g gomega.Gomega) []kuadrantv1.DNSRecord {
 	return func(g gomega.Gomega) []kuadrantv1.DNSRecord {
-		dnsRecords, err := t.Client().Kuadrant().Cluster(logicalcluster.From(namespace)).KuadrantV1().DNSRecords(namespace.Name).List(t.Ctx(), metav1.ListOptions{LabelSelector: labelSelector})
+		dnsRecords, err := t.Client().Kuadrant().KuadrantV1().DNSRecords(namespace.Name).List(t.Ctx(), metav1.ListOptions{LabelSelector: labelSelector})
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		return dnsRecords.Items
 	}
