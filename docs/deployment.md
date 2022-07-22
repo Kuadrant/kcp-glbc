@@ -161,8 +161,8 @@ kubectl -n kcp-glbc edit configmap kcp-glbc-controller-config
 | `GLBC_TLS_PROVIDER` | The TLS certificate issuer | glbc-ca |
 | `HCG_LE_EMAIL` | Email address to use during LE cert requests | kuadrant-dev@redhat.com |
 | `NAMESPACE` | Target namesapce of rcert-manager resources (issuers, certificates) | kcp-glbc |
-| `GLBC_WORKSPACE` | The GLBC workspace| root:users:ev:vo:system-apiserver:kcp-glbc |
-| `GLBC_COMPUTE_WORKSPACE` | The user compute workspace | root:users:ev:vo:system-apiserver:kcp-glbc-user-compute |
+| `GLBC_WORKSPACE` | The GLBC workspace| root:default:kcp-glbc |
+| `GLBC_COMPUTE_WORKSPACE` | The user compute workspace | root:default:kcp-glbc-user-compute |
 
 ### Applying configuration changes
 

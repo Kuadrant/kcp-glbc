@@ -22,7 +22,7 @@ source "${DEPLOY_SCRIPT_DIR}"/.startUtils
 
 set -e pipefail
 
-#Hash of root:users:ev:vo:system-apiserver:kcp-glbc, this will work for all local deployments using the kcp-glbc workspace
+#Hash of root:default:kcp-glbc, this will work for all local deployments using the kcp-glbc workspace
 GLBC_NAMESPACE=kcp89b5fd4ba9405ee7b18d0da859ce7420d36926bac4a97e01af5c244a
 PROMETHEUS_NAMESPACE=monitoring
 
